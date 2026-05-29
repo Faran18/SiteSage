@@ -151,7 +151,7 @@ The frontend will be running on **http://localhost:5173**.
 
 ### Creating Your First Agent
 
-1. **Sign Up/Login** to your account at http://localhost:5173.
+1. **Sign Up/Login** to your account.
 2. Click **"Create Agent"** button on the dashboard.
 3. Configure your agent name and role (e.g., "Tech News Analyzer").
 
