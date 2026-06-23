@@ -68,7 +68,7 @@ https://github.com/user-attachments/assets/4d511b78-6c11-4ed4-84f3-9dae6562ebff
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/webscraper-ai.git
+git clone https://github.com/Faran18/webscraper-ai.git
 cd webscraper-ai
 
 ```
