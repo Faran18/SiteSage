@@ -1,4 +1,4 @@
-# WebScraper AI 🤖
+# SiteSage 🤖
 
 A powerful AI-powered web scraping and monitoring system that transforms any website into an intelligent agent. Chat with website content, monitor changes automatically, and receive email notifications.
 
