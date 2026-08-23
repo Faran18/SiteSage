@@ -11,7 +11,7 @@ load_dotenv()
 # ========================================
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-MODEL_NAME = "llama-3.3-70b-versatile"  
+MODEL_NAME = "openai/gpt-oss-120b"  
 
 if not GROQ_API_KEY:
     print("⚠️ WARNING: GROQ_API_KEY not found in environment variables!")
@@ -27,6 +27,62 @@ client = Groq(api_key=GROQ_API_KEY)
 # ========================================
 # LLM INFERENCE FUNCTION
 # ========================================
+
+def run_chat(messages: list, max_new_tokens: int = 800) -> str:
+    """
+    Run Groq LLM with a full multi-turn message list (system + history + latest user turn).
+    Use this instead of run_llm() when you want the model to have conversation memory.
+
+    Args:
+        messages: list of {"role": "system"|"user"|"assistant", "content": "..."}
+        max_new_tokens: Maximum tokens to generate
+
+    Returns:
+        Generated text response
+    """
+    try:
+        print(f"🤖 Running Groq LLM ({MODEL_NAME}) with {len(messages)} messages...")
+
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=messages,
+            max_tokens=max_new_tokens,
+            temperature=0.3,
+            top_p=0.9,
+            reasoning_effort="low",  # gpt-oss-120b: keep hidden reasoning short so
+                                     # it doesn't eat the whole token budget and
+                                     # leave no room for the actual answer
+        )
+
+        result = response.choices[0].message.content.strip()
+
+        # Safety net: if the model burned its whole budget on reasoning and
+        # returned nothing, retry once with a larger budget before giving up.
+        if not result:
+            print("⚠️ Empty content on first attempt — retrying with larger token budget")
+            response = client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=messages,
+                max_tokens=max_new_tokens + 400,
+                temperature=0.3,
+                top_p=0.9,
+                reasoning_effort="low",
+            )
+            result = response.choices[0].message.content.strip()
+
+        usage = response.usage
+        print(f"✅ Response generated")
+        print(f"   Tokens used: {usage.total_tokens} (prompt: {usage.prompt_tokens}, completion: {usage.completion_tokens})")
+
+        return result
+
+    except Exception as e:
+        error_msg = f"❌ Error during Groq API call: {str(e)}"
+        print(error_msg)
+        import traceback
+        traceback.print_exc()
+        return f"Error: {str(e)}"
+
 
 def run_llm(prompt: str, max_new_tokens: int = 500) -> str:
     """

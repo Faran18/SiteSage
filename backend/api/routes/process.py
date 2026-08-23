@@ -3,8 +3,9 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from backend.core.vector_db import query_similar
-from backend.core.llm_service import run_llm
+from backend.core.llm_service import run_chat
 from backend.models.agent import Agent, ScrapeConfig
+from backend.models.conversation import Conversation, Message
 
 router = APIRouter()
 
@@ -72,26 +73,35 @@ def process_data(data: ProcessRequest):
         
         print(f"📚 Using {chunks_used} chunks")
         print(f"📄 Context length: {len(context)} chars")
-        
-        # Optimized prompt for GPT-4o-mini
-        prompt = f"""You are answering questions about website content. Answer based ONLY on the context below.
+
+        # ── Conversation memory ──────────────────────────────────────
+        conversation_id = Conversation.get_or_create_for_agent(agent.agent_id)
+        history = Message.get_recent(conversation_id, limit=6)  # last 3 exchanges
+
+        # ── Role-aware system prompt ─────────────────────────────────
+        system_prompt = f"""You are "{agent.name}", acting as a {agent.role}.
+Stay in character as a {agent.role} in tone and manner for the whole conversation.
+
+Answer the user's questions using ONLY the CONTEXT provided below and, when
+relevant, earlier turns in this conversation. Never make up information that
+isn't present in the context.
 
 CONTEXT:
 {context[:3000]}
 
-QUESTION: {data.query}
-
-CRITICAL RULES:
-1. Use ONLY information from the context above
-2. Answer in 2-3 clear, concise sentences
+RULES:
+1. Use ONLY information from the CONTEXT above (and prior conversation turns for continuity).
+2. Answer in 2-3 clear, concise sentences unless the user asks for more detail.
 3. If the answer is not in the context, say: "I don't have that information in the provided content."
-4. Do NOT make assumptions or add information not in the context
-5. Be helpful and direct
+4. Do NOT make assumptions or add information not in the context.
+5. Be helpful, direct, and consistent with your role as a {agent.role}."""
 
-ANSWER:"""
-        
+        messages = [{"role": "system", "content": system_prompt}]
+        messages.extend(history)
+        messages.append({"role": "user", "content": data.query})
+
         print(f"🤖 Generating response...")
-        response_text = run_llm(prompt, max_new_tokens=500)
+        response_text = run_chat(messages, max_new_tokens=800)
         
         # ✅ CRITICAL: Ensure response is valid
         if not response_text or len(response_text.strip()) == 0:
@@ -115,7 +125,11 @@ ANSWER:"""
         
         print(f"📤 Response: '{response_text[:100]}...'")
         print(f"✅ Response generated")
-        
+
+        # Save this turn so future messages have memory of it
+        Message.add(conversation_id, "user", data.query)
+        Message.add(conversation_id, "assistant", response_text.strip())
+
         # Return response with all required fields
         return {
             "message": response_text.strip(),

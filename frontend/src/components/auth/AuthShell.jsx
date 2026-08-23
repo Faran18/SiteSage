@@ -26,7 +26,7 @@ export default function AuthShell({ children }) {
                 <Bot className="w-7 h-7 text-white" />
               </div>
               <div>
-                <div className="text-white text-xl font-bold leading-tight">AI Agent Hub</div>
+                <div className="text-white text-xl font-bold leading-tight">SiteSage</div>
                 <div className="text-gray-300 text-sm">Sign in to continue</div>
               </div>
             </div>

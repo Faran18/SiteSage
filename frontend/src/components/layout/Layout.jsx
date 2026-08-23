@@ -80,7 +80,7 @@ export default function Layout() {
                   <Bot className="w-6 h-6 text-white" />
                 </div>
                 <span className="text-lg sm:text-xl font-bold bg-gradient-to-r from-primary-600 to-secondary-600 bg-clip-text text-transparent">
-                  AI Agent Hub
+                  SiteSage
                 </span>
               </Link>
 
@@ -239,7 +239,7 @@ export default function Layout() {
         <footer className="bg-white border-t border-gray-200 mt-12">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
             <p className="text-center text-gray-500 text-sm">
-              © 2025 AI Agent Hub. Powered by FastAPI & React.
+              © 2026 SiteSage. Powered by FastAPI & React.
             </p>
           </div>
         </footer>

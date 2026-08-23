@@ -15,6 +15,8 @@ export default function ChatPage() {
   const [showAddUrl, setShowAddUrl] = useState(false);
   const [newUrl, setNewUrl] = useState('');
   const [scraping, setScraping] = useState(false);
+  const [multiPage, setMultiPage] = useState(false);
+  const [maxPages, setMaxPages] = useState(25);
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -58,7 +60,8 @@ export default function ChatPage() {
       
       await agentService.scrapeUrl(agentId, newUrl.trim(), {
         auto_scrape: false,
-        multi_page: false,
+        multi_page: multiPage,
+        max_pages: maxPages,
       });
       
       toast.success('Website scraped successfully!', { id: 'scrape' });
@@ -175,6 +178,28 @@ export default function ChatPage() {
                 {scraping ? 'Scraping...' : 'Add'}
               </button>
             </div>
+            <label className="flex items-center mt-3 text-sm text-gray-600 space-x-2">
+              <input
+                type="checkbox"
+                checked={multiPage}
+                onChange={(e) => setMultiPage(e.target.checked)}
+                className="rounded border-gray-300 text-primary-500 focus:ring-primary-500"
+              />
+              <span>Crawl multiple pages (follow pagination and subcategories on this site)</span>
+            </label>
+            {multiPage && (
+              <label className="flex items-center mt-2 ml-6 text-sm text-gray-600 space-x-2">
+                <span>Max pages to crawl:</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={maxPages}
+                  onChange={(e) => setMaxPages(Number(e.target.value))}
+                  className="w-20 px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                />
+              </label>
+            )}
           </form>
         )}
       </div>

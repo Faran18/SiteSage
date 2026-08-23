@@ -4,18 +4,27 @@ from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright
 
 def scrape_website(url: str):
-    """Synchronous version of Playwright scraper"""
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
         
-        # Block unnecessary resources
         page.route("**/*", lambda route: route.abort()
                    if route.request.resource_type in ["stylesheet", "font", "image", "media"]
                    else route.continue_())
         
         page.goto(url, timeout=60000, wait_until="domcontentloaded")
         page.wait_for_timeout(2000)
+
+        # Scroll to bottom repeatedly until page height stops growing
+        prev_height = 0
+        for _ in range(20):  # safety cap
+            curr_height = page.evaluate("document.body.scrollHeight")
+            if curr_height == prev_height:
+                break
+            page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            page.wait_for_timeout(800)
+            prev_height = curr_height
+
         content = page.content()
         browser.close()
     return content

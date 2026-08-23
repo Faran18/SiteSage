@@ -190,7 +190,7 @@ export default function Login() {
               {!isSignUp ? (
                 <>
                   <h2 className="text-3xl font-bold">Hey There!</h2>
-                  <p className="mt-3 text-white/80">Begin your journey using this Web-App, and start scraping now.</p>
+                  <p className="mt-3 text-white/80">Begin your automation journey using SiteSage, and start scraping now.</p>
                   <button
                     onClick={() => setIsSignUp(true)}
                     className="mt-6 px-10 py-3 rounded-full border-2 border-white font-semibold hover:bg-white hover:text-[#3b57d6] transition"

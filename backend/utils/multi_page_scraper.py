@@ -12,6 +12,20 @@ def is_same_domain(url1, url2):
     return urlparse(url1).netloc == urlparse(url2).netloc
 
 
+def is_in_scope(url: str, root_prefix: str) -> bool:
+    """
+    True if `url`'s path is the root page itself, a pagination variant of it
+    (?page=2 etc.), OR a subcategory nested under it (e.g. root '/pagination'
+    matches '/pagination/BMW', '/pagination/Porsche', ...).
+
+    Uses a '/' boundary check so '/pagination' does NOT match an unrelated
+    sibling path like '/pagination-archive'.
+    """
+    path = urlparse(url).path.rstrip('/')
+    root = root_prefix.rstrip('/')
+    return path == root or path.startswith(root + '/')
+
+
 def scrape_multiple_pages(start_url: str, max_pages: int = 20, 
                           css_selector: str = None, xpath: str = None):
     """
@@ -31,6 +45,7 @@ def scrape_multiple_pages(start_url: str, max_pages: int = 20,
     visited_urls = set()
     to_visit = [start_url]
     pages_data = []
+    root_prefix = urlparse(start_url).path
     
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -76,7 +91,7 @@ def scrape_multiple_pages(start_url: str, max_pages: int = 20,
                 
                 visited_urls.add(current_url)
                 
-                # Find links on the page
+                
                 soup = BeautifulSoup(html_content, 'html.parser')
                 links = soup.find_all('a', href=True)
                 
@@ -84,14 +99,14 @@ def scrape_multiple_pages(start_url: str, max_pages: int = 20,
                     href = link['href']
                     absolute_url = urljoin(current_url, href)
                     
-                    # Add to queue if not visited and same domain
                     if (absolute_url not in visited_urls and 
                         absolute_url not in to_visit and
                         is_same_domain(absolute_url, start_url) and
+                        is_in_scope(absolute_url, root_prefix) and
                         not absolute_url.endswith(('.pdf', '.jpg', '.png', '.zip'))):
                         to_visit.append(absolute_url)
                 
-                time.sleep(0.5)  # Be polite
+                time.sleep(0.5)  
                 
             except Exception as e:
                 print(f"⚠️ Error scraping {current_url}: {e}")

@@ -48,7 +48,7 @@ export default function Home() {
       <section className="text-center space-y-8 py-12">
         <div className="animate-fade-in">
           <h1 className="text-5xl md:text-6xl font-bold bg-gradient-to-r from-primary-600 via-secondary-600 to-primary-600 bg-clip-text text-transparent mb-4">
-            AI-Powered Web Intelligence
+            SiteSage: Your Web Agent Hub
           </h1>
           <p className="text-xl text-gray-600 max-w-3xl mx-auto">
             Transform any website into an intelligent agent. Monitor changes, chat with content, and automate your workflow.
