@@ -1,4 +1,4 @@
-# WebScraper AI 🤖
+# SiteSage 🤖
 
 A powerful AI-powered web scraping and monitoring system that transforms any website into an intelligent agent. Chat with website content, monitor changes automatically, and receive email notifications.
 
@@ -45,7 +45,7 @@ https://github.com/user-attachments/assets/4d511b78-6c11-4ed4-84f3-9dae6562ebff
 * Python 3.10+
 * SQLite (User & Agent data)
 * ChromaDB (Vector storage)
-* Groq API (LLM - Llama 3.3 70B)
+* Groq API (LLM - gpt-oss-120b)
 * Playwright (Web scraping)
 * APScheduler (Background jobs)
 * BeautifulSoup4 (HTML parsing)
@@ -183,7 +183,7 @@ The frontend will be running on **http://localhost:5173**.
 Edit `backend/core/llm_service.py` to change the model:
 
 ```python
-MODEL_NAME = "llama-3.3-70b-versatile"  # Recommended
+MODEL_NAME = "gpt-oss-120b"  # Recommended
 
 ```
 
