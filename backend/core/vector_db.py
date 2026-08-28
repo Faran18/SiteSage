@@ -6,7 +6,7 @@ from chromadb.utils import embedding_functions
 from typing import Optional
 
 VECTOR_DB_PATH = "E:/web_scraper/data/vectors"
-EMBEDDING_MODEL_PATH = "E:/web_scraper/backend/models/embeddings/all-MiniLM-L6-v2"
+EMBEDDING_MODEL_PATH = "sentence-transformers/all-MiniLM-L6-v2"
 
 client = chromadb.PersistentClient(path=VECTOR_DB_PATH)
 sentence_ef = embedding_functions.SentenceTransformerEmbeddingFunction(

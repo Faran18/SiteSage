@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.api import api_router
 from backend.core.scheduler import start_scheduler, stop_scheduler
 from backend.models import init_database
-from backend.models.user import Session  # ✅ NEW
+from backend.models.user import Session  
 
 app = FastAPI(
     title="WebScraper AI Agent API",
