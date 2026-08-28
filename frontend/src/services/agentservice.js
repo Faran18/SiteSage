@@ -62,4 +62,10 @@ export const agentService = {
     });
     return response.data;
   },
+
+  // Start a fresh conversation (clears stored history for this agent)
+  resetChat: async (agentId) => {
+    const response = await api.post(`/agents/${agentId}/chat/reset`);
+    return response.data;
+  },
 };

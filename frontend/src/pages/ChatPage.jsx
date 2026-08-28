@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Send, ArrowLeft, Bot, User, Loader2, Plus, Link as LinkIcon } from 'lucide-react';
+import { Send, ArrowLeft, Bot, User, Loader2, Plus, Link as LinkIcon, RotateCcw } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { agentService } from '../services/agentService';
+import { agentService } from '../services/agentservice';
 
 export default function ChatPage() {
   const { agentId } = useParams();
@@ -46,6 +46,22 @@ export default function ChatPage() {
       navigate('/agents');
     } finally {
       setLoadingAgent(false);
+    }
+  };
+
+  const handleNewChat = async () => {
+    const confirmed = window.confirm(
+      'Start a new chat? This will permanently clear this conversation\'s history. ' +
+      'The agent\'s knowledge base (scraped content) will NOT be affected.'
+    );
+    if (!confirmed) return;
+
+    try {
+      await agentService.resetChat(agentId);
+      setMessages([]);
+      toast.success('Started a new chat');
+    } catch (error) {
+      toast.error('Failed to start a new chat');
     }
   };
 
@@ -136,13 +152,22 @@ export default function ChatPage() {
             <span>Back to Agents</span>
           </button>
           
-          <button
-            onClick={() => setShowAddUrl(!showAddUrl)}
-            className="flex items-center space-x-2 px-4 py-2 bg-primary-50 text-primary-600 rounded-lg hover:bg-primary-100 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add URL</span>
-          </button>
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={handleNewChat}
+              className="flex items-center space-x-2 px-4 py-2 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
+            >
+              <RotateCcw className="w-4 h-4" />
+              <span>New Chat</span>
+            </button>
+            <button
+              onClick={() => setShowAddUrl(!showAddUrl)}
+              className="flex items-center space-x-2 px-4 py-2 bg-primary-50 text-primary-600 rounded-lg hover:bg-primary-100 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add URL</span>
+            </button>
+          </div>
         </div>
 
         <div className="flex items-center space-x-4">

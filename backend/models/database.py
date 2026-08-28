@@ -154,6 +154,7 @@ def init_database():
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS reminders (
                 reminder_id TEXT PRIMARY KEY,
+                user_id TEXT,
                 url TEXT NOT NULL,
                 email TEXT NOT NULL,
                 interval_hours INTEGER NOT NULL DEFAULT 24,
@@ -163,11 +164,13 @@ def init_database():
                 last_content_hash TEXT,
                 last_scraped TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
             )
         """)
         
-        # ✅ NEW: Reminder History (track changes for reminders)
+        # Reminder History (track changes for reminders)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS reminder_history (
                 history_id TEXT PRIMARY KEY,
@@ -207,6 +210,17 @@ def init_database():
             FOREIGN KEY(user_id) REFERENCES users(user_id)
         )
         """)
+
+
+        try:
+            cursor.execute("ALTER TABLE reminders ADD COLUMN user_id TEXT")
+            print("✅ Migrated: added user_id column to reminders table")
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" not in str(e).lower():
+                raise  # unexpected error — don't swallow it silently
+
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_reminders_user ON reminders(user_id)")
+
         conn.commit()
         print("✅ Database initialized successfully at:", DATABASE_PATH)
 

@@ -1,6 +1,6 @@
 # backend/api/routes/scrape.py
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, HttpUrl
 import asyncio
 import hashlib
@@ -8,6 +8,8 @@ from backend.utils.playwright_scraper import scrape_website, extract_text_from_h
 from backend.utils.multi_page_scraper import scrape_multiple_pages
 from backend.core.vector_db import store_scraped_data
 from backend.models.agent import Agent, ScrapeConfig
+from backend.models.user import User
+from backend.core.auth import get_current_user
 from datetime import datetime
 
 router = APIRouter()
@@ -25,7 +27,7 @@ class ScrapeRequest(BaseModel):
 
 
 @router.post("/scrape")
-async def scrape_and_store(data: ScrapeRequest):
+async def scrape_and_store(data: ScrapeRequest, user: User = Depends(get_current_user)):  # ✅ Require auth
     """
     Scrape URL(s) and store in agent's knowledge base.
     Supports single page or multi-page crawling.
@@ -35,6 +37,10 @@ async def scrape_and_store(data: ScrapeRequest):
         
         if not agent:
             raise HTTPException(status_code=404, detail=f"Agent not found: {data.agent_id}")
+        
+        # ✅ Check ownership — only the owner can scrape into their own agent
+        if agent.user_id != user.user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
         
         print(f"🤖 Scraping for agent: {agent.name}")
         print(f"🔗 URL: {data.url}")
@@ -132,12 +138,16 @@ async def scrape_and_store(data: ScrapeRequest):
 
 
 @router.post("/scrape/refresh/{agent_id}")
-async def refresh_agent_data(agent_id: str):
+async def refresh_agent_data(agent_id: str, user: User = Depends(get_current_user)):  # ✅ Require auth
     """Re-scrape primary URL for an agent"""
     try:
         agent = Agent.get_by_id(agent_id)
         if not agent:
             raise HTTPException(status_code=404, detail="Agent not found")
+        
+        # ✅ Check ownership
+        if agent.user_id != user.user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
         
         configs = ScrapeConfig.get_by_agent(agent_id)
         primary = next((c for c in configs if c.is_primary), None)
@@ -153,7 +163,7 @@ async def refresh_agent_data(agent_id: str):
             multi_page=False,
             auto_scrape=primary.auto_scrape,
             scrape_interval_hours=primary.scrape_interval_hours
-        ))
+        ), user=user)
         
     except HTTPException:
         raise

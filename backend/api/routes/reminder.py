@@ -1,6 +1,6 @@
 # backend/api/routes/reminder.py
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, HttpUrl, EmailStr
 import asyncio
 import hashlib
@@ -8,6 +8,8 @@ from datetime import datetime
 from backend.models.reminder import Reminder, ReminderHistory
 from backend.utils.playwright_scraper import scrape_website, extract_text_from_html
 from backend.core.scheduler import schedule_reminder
+from backend.models.user import User
+from backend.core.auth import get_current_user
 
 router = APIRouter()
 
@@ -31,7 +33,7 @@ class UpdateReminderRequest(BaseModel):
 
 
 @router.post("/reminders/create")
-async def create_reminder(data: CreateReminderRequest):
+async def create_reminder(data: CreateReminderRequest, user: User = Depends(get_current_user)):  # ✅ Require auth
     """
     Create a new standalone reminder.
     This will monitor the URL and send email notifications on changes.
@@ -44,8 +46,9 @@ async def create_reminder(data: CreateReminderRequest):
                 detail="Interval must be at least 1 hour"
             )
         
-        # Create reminder
+        # Create reminder, owned by the logged-in user
         reminder = Reminder.create(
+            user_id=user.user_id,
             url=str(data.url),
             email=data.email,
             interval_hours=data.interval_hours,
@@ -113,10 +116,10 @@ async def create_reminder(data: CreateReminderRequest):
 
 
 @router.get("/reminders/list")
-def list_reminders(active_only: bool = True):
-    """Get all reminders"""
+def list_reminders(active_only: bool = True, user: User = Depends(get_current_user)):  # ✅ Require auth
+    """Get all reminders belonging to the logged-in user"""
     try:
-        reminders = Reminder.get_all(active_only=active_only)
+        reminders = Reminder.get_by_user(user.user_id, active_only=active_only)
         return {
             "count": len(reminders),
             "reminders": [r.to_dict() for r in reminders]
@@ -126,13 +129,17 @@ def list_reminders(active_only: bool = True):
 
 
 @router.get("/reminders/{reminder_id}")
-def get_reminder(reminder_id: str):
+def get_reminder(reminder_id: str, user: User = Depends(get_current_user)):  # ✅ Require auth
     """Get reminder details with history"""
     try:
         reminder = Reminder.get_by_id(reminder_id)
         
         if not reminder:
             raise HTTPException(status_code=404, detail="Reminder not found")
+        
+        # ✅ Check ownership
+        if reminder.user_id != user.user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
         
         # Get history
         history = ReminderHistory.get_by_reminder(reminder_id, limit=10)
@@ -148,10 +155,14 @@ def get_reminder(reminder_id: str):
 
 
 @router.get("/reminders/email/{email}")
-def get_reminders_by_email(email: str):
-    """Get all reminders for an email address"""
+def get_reminders_by_email(email: str, user: User = Depends(get_current_user)):  # ✅ Require auth
+    """Get the logged-in user's own reminders for a given email address"""
     try:
-        reminders = Reminder.get_by_email(email)
+        # ✅ Scoped to the caller's own reminders — previously this let
+        # any logged-in user pull up ANY email's reminders regardless
+        # of who owned them.
+        own_reminders = Reminder.get_by_user(user.user_id, active_only=False)
+        reminders = [r for r in own_reminders if r.email == email]
         return {
             "email": email,
             "count": len(reminders),
@@ -162,13 +173,17 @@ def get_reminders_by_email(email: str):
 
 
 @router.patch("/reminders/{reminder_id}")
-def update_reminder(reminder_id: str, data: UpdateReminderRequest):
+def update_reminder(reminder_id: str, data: UpdateReminderRequest, user: User = Depends(get_current_user)):  # ✅ Require auth
     """Update reminder details"""
     try:
         reminder = Reminder.get_by_id(reminder_id)
         
         if not reminder:
             raise HTTPException(status_code=404, detail="Reminder not found")
+        
+        # ✅ Check ownership
+        if reminder.user_id != user.user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
         
         updates = {}
         if data.url is not None:
@@ -204,13 +219,17 @@ def update_reminder(reminder_id: str, data: UpdateReminderRequest):
 
 
 @router.patch("/reminders/{reminder_id}/toggle")
-def toggle_reminder(reminder_id: str, is_active: bool):
+def toggle_reminder(reminder_id: str, is_active: bool, user: User = Depends(get_current_user)):  # ✅ Require auth
     """Activate or deactivate a reminder"""
     try:
         reminder = Reminder.get_by_id(reminder_id)
         
         if not reminder:
             raise HTTPException(status_code=404, detail="Reminder not found")
+        
+        # ✅ Check ownership
+        if reminder.user_id != user.user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
         
         reminder.update(is_active=1 if is_active else 0)
         
@@ -238,13 +257,17 @@ def toggle_reminder(reminder_id: str, is_active: bool):
 
 
 @router.delete("/reminders/{reminder_id}")
-def delete_reminder(reminder_id: str):
+def delete_reminder(reminder_id: str, user: User = Depends(get_current_user)):  # ✅ Require auth
     """Delete a reminder"""
     try:
         reminder = Reminder.get_by_id(reminder_id)
         
         if not reminder:
             raise HTTPException(status_code=404, detail="Reminder not found")
+        
+        # ✅ Check ownership
+        if reminder.user_id != user.user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
         
         # Remove from scheduler
         from backend.core.scheduler import scheduler
@@ -270,13 +293,17 @@ def delete_reminder(reminder_id: str):
 
 
 @router.post("/reminders/{reminder_id}/trigger")
-async def trigger_reminder_now(reminder_id: str):
+async def trigger_reminder_now(reminder_id: str, user: User = Depends(get_current_user)):  # ✅ Require auth
     """Manually trigger a reminder check now"""
     try:
         reminder = Reminder.get_by_id(reminder_id)
         
         if not reminder:
             raise HTTPException(status_code=404, detail="Reminder not found")
+        
+        # ✅ Check ownership
+        if reminder.user_id != user.user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
         
         print(f"🔄 Manual trigger for reminder: {reminder_id}")
         

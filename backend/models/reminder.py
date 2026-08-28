@@ -11,8 +11,9 @@ class Reminder:
     def __init__(self, reminder_id, url, email, interval_hours=24, 
                  css_selector=None, xpath=None, is_active=1, 
                  last_content_hash=None, last_scraped=None, 
-                 created_at=None, updated_at=None):
+                 created_at=None, updated_at=None, user_id=None):
         self.reminder_id = reminder_id
+        self.user_id = user_id
         self.url = url
         self.email = email
         self.interval_hours = interval_hours
@@ -25,17 +26,17 @@ class Reminder:
         self.updated_at = updated_at
     
     @staticmethod
-    def create(url, email, interval_hours=24, css_selector=None, xpath=None):
-        """Create a new reminder"""
+    def create(user_id, url, email, interval_hours=24, css_selector=None, xpath=None):
+        """Create a new reminder, owned by user_id"""
         reminder_id = str(uuid.uuid4())
         
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO reminders 
-                (reminder_id, url, email, interval_hours, css_selector, xpath)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (reminder_id, url, email, interval_hours, css_selector, xpath))
+                (reminder_id, user_id, url, email, interval_hours, css_selector, xpath)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (reminder_id, user_id, url, email, interval_hours, css_selector, xpath))
             conn.commit()
         
         return Reminder.get_by_id(reminder_id)
@@ -51,6 +52,26 @@ class Reminder:
             if row:
                 return Reminder(**dict(row))
             return None
+
+    @staticmethod
+    def get_by_user(user_id, active_only=True):
+        """Get all reminders belonging to a specific user"""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+
+            if active_only:
+                cursor.execute(
+                    "SELECT * FROM reminders WHERE user_id = ? AND is_active = 1 ORDER BY created_at DESC",
+                    (user_id,)
+                )
+            else:
+                cursor.execute(
+                    "SELECT * FROM reminders WHERE user_id = ? ORDER BY created_at DESC",
+                    (user_id,)
+                )
+
+            rows = cursor.fetchall()
+            return [Reminder(**dict(row)) for row in rows]
     
     @staticmethod
     def get_all(active_only=True):
@@ -126,6 +147,7 @@ class Reminder:
         """Convert to dictionary"""
         return {
             'reminder_id': self.reminder_id,
+            'user_id': self.user_id,
             'url': self.url,
             'email': self.email,
             'interval_hours': self.interval_hours,

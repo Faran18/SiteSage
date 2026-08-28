@@ -1,13 +1,35 @@
 # backend/api/routes/process.py
 
-from fastapi import APIRouter, HTTPException
+import re
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from backend.core.vector_db import query_similar
 from backend.core.llm_service import run_chat
 from backend.models.agent import Agent, ScrapeConfig
 from backend.models.conversation import Conversation, Message
+from backend.models.user import User
+from backend.core.auth import get_current_user
 
 router = APIRouter()
+
+
+# Common small-talk openers that don't need the knowledge base searched at
+# all. Matched only when the ENTIRE message is essentially just this phrase
+# (short, no other real content) — so "hello, do you have any BMWs" still
+# goes through normal retrieval, only a bare "hello" gets short-circuited.
+_SMALL_TALK_PATTERNS = [
+    r"^(hi|hello|hey|hola|yo|sup|howdy|greetings)[\s!.,]*$",
+    r"^good (morning|afternoon|evening|day)[\s!.,]*$",
+    r"^(how are you|how's it going|what's up)[\s?!.,]*$",
+    r"^(thanks|thank you|thx|ty)[\s!.,]*$",
+    r"^(bye|goodbye|see you|see ya)[\s!.,]*$",
+]
+_SMALL_TALK_RE = re.compile("|".join(_SMALL_TALK_PATTERNS), re.IGNORECASE)
+
+
+def is_small_talk(query: str) -> bool:
+    """True if the message is pure small talk with no real question in it."""
+    return bool(_SMALL_TALK_RE.match(query.strip()))
 
 
 class ProcessRequest(BaseModel):
@@ -17,7 +39,7 @@ class ProcessRequest(BaseModel):
 
 
 @router.post("/process")
-def process_data(data: ProcessRequest):
+def process_data(data: ProcessRequest, user: User = Depends(get_current_user)):  # ✅ Require auth
     """Chat with an agent using its knowledge base."""
     try:
         agent = Agent.get_by_id(data.agent_id)
@@ -28,13 +50,60 @@ def process_data(data: ProcessRequest):
                 detail=f"Agent not found: {data.agent_id}"
             )
         
+        # ✅ Check ownership — this agent must belong to the caller
+        if agent.user_id != user.user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        
         print(f"💬 Chat with agent: {agent.name}")
         print(f"👤 User query: '{data.query}'")
         
         # Get agent's primary scrape config for URL info
         primary_config = ScrapeConfig.get_primary(data.agent_id)
         source_url = primary_config.url if primary_config else "Unknown source"
-        
+
+        conversation_id = Conversation.get_or_create_for_agent(agent.agent_id)
+
+        # ── Small talk short-circuit ─────────────────────────────────
+        # A bare "hello" doesn't need the knowledge base searched — doing
+        # so just forces ChromaDB to return 5 weakly-relevant chunks (it
+        # always returns top_k results even when nothing truly matches),
+        # which then pollutes the prompt and can produce odd, off-topic
+        # replies. Skip retrieval entirely for pure small talk.
+        if is_small_talk(data.query):
+            print("💡 Small talk detected — skipping knowledge base search")
+
+            greeting_system_prompt = f"""You are "{agent.name}", acting as a {agent.role}.
+Stay in character as a {agent.role} in tone and manner.
+
+The user just sent a casual greeting or small talk with no specific
+question. Reply naturally and briefly (1-2 sentences) as {agent.role}
+would, and invite them to ask about the available inventory/content.
+Do not invent any specific details, prices, or listings — you have no
+inventory context loaded for this reply."""
+
+            # Note: deliberately NOT including conversation history here.
+            # A greeting should always get a clean, fresh reply — pulling
+            # in old turns (e.g. an earlier question about the system
+            # prompt) is exactly what caused "hello" to return unrelated
+            # meta-answers before.
+            messages = [
+                {"role": "system", "content": greeting_system_prompt},
+                {"role": "user", "content": data.query},
+            ]
+
+            response_text = run_chat(messages, max_new_tokens=150)
+
+            if response_text and response_text.strip():
+                Message.add(conversation_id, "user", data.query)
+                Message.add(conversation_id, "assistant", response_text.strip())
+
+            return {
+                "message": response_text.strip() if response_text else f"Hi! I'm {agent.name}. Ask me anything about our listings.",
+                "agent_name": agent.name,
+                "source_url": source_url,
+                "chunks_used": 0
+            }
+
         # Search agent's knowledge base
         retrieval = query_similar(
             agent_id=data.agent_id,  
@@ -75,7 +144,6 @@ def process_data(data: ProcessRequest):
         print(f"📄 Context length: {len(context)} chars")
 
         # ── Conversation memory ──────────────────────────────────────
-        conversation_id = Conversation.get_or_create_for_agent(agent.agent_id)
         history = Message.get_recent(conversation_id, limit=6)  # last 3 exchanges
 
         # ── Role-aware system prompt ─────────────────────────────────
@@ -154,13 +222,40 @@ RULES:
         }
 
 
+@router.post("/agents/{agent_id}/chat/reset")
+def reset_conversation(agent_id: str, user: User = Depends(get_current_user)):  # ✅ Require auth
+    """
+    Start a fresh conversation with an agent — wipes stored history so old
+    turns (e.g. earlier probing questions) never leak into future replies.
+    """
+    try:
+        agent = Agent.get_by_id(agent_id)
+
+        if not agent:
+            raise HTTPException(status_code=404, detail="Agent not found")
+
+        # ✅ Check ownership
+        if agent.user_id != user.user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        Conversation.clear_for_agent(agent_id)
+        print(f"🧹 Cleared conversation history for agent: {agent.name}")
+
+        return {"message": "Conversation reset. Starting fresh."}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/agents/{agent_id}/chat")
-def chat_with_agent(agent_id: str, query: str):
+def chat_with_agent(agent_id: str, query: str, user: User = Depends(get_current_user)):  # ✅ Require auth
     """Simplified chat endpoint."""
     try:
         return process_data(ProcessRequest(
             agent_id=agent_id,
             query=query
-        ))
+        ), user=user)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
