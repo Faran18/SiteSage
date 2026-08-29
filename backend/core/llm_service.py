@@ -2,6 +2,7 @@
 
 from groq import Groq
 import os
+import json
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -12,7 +13,7 @@ load_dotenv()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 MODEL_NAME = "openai/gpt-oss-120b"  
-MODERATION_MODEL = "meta-llama/Llama-Guard-4-12B"
+MODERATION_MODEL = "openai/gpt-oss-safeguard-20b"
 
 if not GROQ_API_KEY:
     print("⚠️ WARNING: GROQ_API_KEY not found in environment variables!")
@@ -29,25 +30,66 @@ client = Groq(api_key=GROQ_API_KEY)
 # CONTENT MODERATION FUNCTION
 # ========================================
 
+# gpt-oss-safeguard is a "bring your own policy" model — it reasons against
+# whatever policy you give it and returns structured JSON, rather than a
+# fixed built-in taxonomy like Llama Guard had.
+_MODERATION_POLICY = """# Abusive Language Policy
+
+## INSTRUCTIONS
+Classify whether the user message below is abusive, hateful, or harassing
+toward the assistant or in general. This assistant is a customer-facing
+car sales chatbot; it should not engage with users who are being hostile.
+
+## DEFINITIONS
+- Violation: slurs, hate speech, threats, harassment, or targeted insults.
+- Not a violation: ordinary customer questions, complaints about a product
+  or service, mild frustration, sarcasm, or profanity used casually and
+  not directed at a person as an attack.
+
+## CRITERIA
+Return violation=1 only for slurs, hate speech, threats, or harassment.
+Return violation=0 for everything else, including neutral or mildly
+negative messages that are not attacks on a person or group.
+
+## OUTPUT FORMAT
+Respond with ONLY a JSON object, no other text:
+{"violation": 0 or 1, "category": "<short label or 'none'>"}
+"""
+
+
 def moderate_message(text: str) -> bool:
     """
-    Runs a single message through Groq-hosted Llama Guard 4.
-    Catches abuse/hate speech/threats that a plain wordlist filter misses
-    (misspellings, veiled harassment, context-dependent hostility).
+    Runs a single message through Groq-hosted gpt-oss-safeguard-20b using
+    the abuse policy above. Catches abuse/hate speech/threats that a plain
+    wordlist filter misses (misspellings, veiled harassment, context-
+    dependent hostility).
 
-    Returns True if the message is flagged unsafe, False if safe.
-    Fails open (returns False) on any API error — a moderation-service
-    hiccup should never block a legitimate user from chatting.
+    Returns True if the message is flagged a violation, False if not.
+    Fails open (returns False) on any API error or unparseable response —
+    a moderation-service hiccup should never block a legitimate user from
+    chatting.
     """
     try:
         response = client.chat.completions.create(
             model=MODERATION_MODEL,
-            messages=[{"role": "user", "content": text}],
+            messages=[
+                {"role": "system", "content": _MODERATION_POLICY},
+                {"role": "user", "content": text},
+            ],
+            reasoning_effort="low",  # simple classification — don't burn tokens reasoning
         )
-        verdict = response.choices[0].message.content.strip().lower()
-        return verdict.startswith("unsafe")
+        raw = response.choices[0].message.content.strip()
+
+        # Strip a ```json ... ``` fence if the model wraps its answer in one
+        if raw.startswith("```"):
+            raw = raw.strip("`")
+            if raw.lower().startswith("json"):
+                raw = raw[4:].strip()
+
+        result = json.loads(raw)
+        return bool(result.get("violation")) 
     except Exception as e:
-        print(f"⚠️ Llama Guard check failed, failing open: {e}")
+        print(f"⚠️ Moderation check failed, failing open: {e}")
         return False
 
 
