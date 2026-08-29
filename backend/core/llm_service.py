@@ -295,18 +295,3 @@ def test_groq_connection():
         return False
 
 
-# Run test on import (optional)
-if __name__ == "__main__":
-    print("\n" + "="*60)
-    print("Groq LLM Service - Connection Test")
-    print("="*60 + "\n")
-    
-    info = get_model_info()
-    print(f"Model: {info['model_name']}")
-    print(f"API Key Set: {info['api_key_set']}")
-    print(f"Max Context: {info['max_tokens']} tokens\n")
-    
-    if info['api_key_set']:
-        test_groq_connection()
-    else:
-        print("⚠️ Please set GROQ_API_KEY in your .env file")
