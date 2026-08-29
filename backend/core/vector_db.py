@@ -1,6 +1,7 @@
 # backend/core/vector_db.py
 
 import uuid
+import numpy as np
 import chromadb
 from chromadb.utils import embedding_functions
 from typing import Optional
@@ -12,6 +13,37 @@ client = chromadb.PersistentClient(path=VECTOR_DB_PATH)
 sentence_ef = embedding_functions.SentenceTransformerEmbeddingFunction(
     model_name=EMBEDDING_MODEL_PATH
 )
+
+# ── Semantic small-talk detection ────────────────────────────────────
+_SMALL_TALK_EXAMPLES = [
+    "hi",
+    "hello there",
+    "hey, how are you doing",
+    "what's up",
+    "good morning",
+    "yo what's good",
+    "howdy",
+    "thanks a lot",
+    "thank you so much",
+    "bye, see you later",
+    "goodbye",
+]
+_small_talk_embeddings = np.array(sentence_ef(_SMALL_TALK_EXAMPLES))
+
+
+def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
+    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
+
+
+def is_semantically_small_talk(query: str, threshold: float = 0.75) -> bool:
+    """
+    True if `query` is semantically close to one of the example small-talk
+    phrases above. Catches paraphrases and new phrasings the old hardcoded
+    regex list would've missed, without editing code for each new variant.
+    """
+    query_embedding = np.array(sentence_ef([query])[0])
+    similarities = [_cosine_similarity(query_embedding, ex) for ex in _small_talk_embeddings]
+    return max(similarities) >= threshold
 
 def get_agent_collection(agent_id: str):
     """Get or create a ChromaDB collection for a specific agent."""

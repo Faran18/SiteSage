@@ -52,7 +52,7 @@ class Agent:
             cursor.execute(
                 """
                 INSERT INTO agents (agent_id, user_id, name, role)
-                VALUES (?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s)
                 """,
                 (agent_id, user_id, name, role),
             )
@@ -64,7 +64,7 @@ class Agent:
     def get_by_id(agent_id):
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM agents WHERE agent_id = ?", (agent_id,))
+            cursor.execute("SELECT * FROM agents WHERE agent_id = %s", (agent_id,))
             row = cursor.fetchone()
             return Agent(**dict(row)) if row else None
 
@@ -75,17 +75,17 @@ class Agent:
 
             if status and user_id:
                 cursor.execute(
-                    "SELECT * FROM agents WHERE status = ? AND user_id = ? ORDER BY created_at DESC",
+                    "SELECT * FROM agents WHERE status = %s AND user_id = %s ORDER BY created_at DESC",
                     (status, user_id),
                 )
             elif status:
                 cursor.execute(
-                    "SELECT * FROM agents WHERE status = ? ORDER BY created_at DESC",
+                    "SELECT * FROM agents WHERE status = %s ORDER BY created_at DESC",
                     (status,),
                 )
             elif user_id:
                 cursor.execute(
-                    "SELECT * FROM agents WHERE user_id = ? ORDER BY created_at DESC",
+                    "SELECT * FROM agents WHERE user_id = %s ORDER BY created_at DESC",
                     (user_id,),
                 )
             else:
@@ -102,7 +102,7 @@ class Agent:
     def count_by_user(user_id):
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) as count FROM agents WHERE user_id = ?", (user_id,))
+            cursor.execute("SELECT COUNT(*) as count FROM agents WHERE user_id = %s", (user_id,))
             row = cursor.fetchone()
             return row["count"] if row else 0
 
@@ -115,12 +115,12 @@ class Agent:
 
         updates["updated_at"] = datetime.now().isoformat()
 
-        set_clause = ", ".join([f"{k} = ?" for k in updates.keys()])
+        set_clause = ", ".join([f"{k} = %s" for k in updates.keys()])
         values = list(updates.values()) + [self.agent_id]
 
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(f"UPDATE agents SET {set_clause} WHERE agent_id = ?", values)
+            cursor.execute(f"UPDATE agents SET {set_clause} WHERE agent_id = %s", values)
             conn.commit()
 
         for k, v in updates.items():
@@ -136,11 +136,11 @@ class Agent:
         with get_db_connection() as conn:
             cursor = conn.cursor()
 
-            cursor.execute("DELETE FROM scrape_configs WHERE agent_id = ?", (agent_id,))
-            cursor.execute("DELETE FROM subscriptions WHERE agent_id = ?", (agent_id,))
-            cursor.execute("DELETE FROM change_history WHERE agent_id = ?", (agent_id,))
+            cursor.execute("DELETE FROM scrape_configs WHERE agent_id = %s", (agent_id,))
+            cursor.execute("DELETE FROM subscriptions WHERE agent_id = %s", (agent_id,))
+            cursor.execute("DELETE FROM change_history WHERE agent_id = %s", (agent_id,))
 
-            cursor.execute("DELETE FROM agents WHERE agent_id = ?", (agent_id,))
+            cursor.execute("DELETE FROM agents WHERE agent_id = %s", (agent_id,))
             conn.commit()
 
             return cursor.rowcount > 0
@@ -217,7 +217,7 @@ class ScrapeConfig:
                 INSERT INTO scrape_configs
                 (config_id, agent_id, url, css_selector, xpath, is_primary,
                  auto_scrape, scrape_interval_hours)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     config_id,
@@ -238,7 +238,7 @@ class ScrapeConfig:
     def get_by_id(config_id):
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM scrape_configs WHERE config_id = ?", (config_id,))
+            cursor.execute("SELECT * FROM scrape_configs WHERE config_id = %s", (config_id,))
             row = cursor.fetchone()
             return ScrapeConfig(**dict(row)) if row else None
 
@@ -247,7 +247,7 @@ class ScrapeConfig:
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT * FROM scrape_configs WHERE agent_id = ? ORDER BY is_primary DESC, created_at DESC",
+                "SELECT * FROM scrape_configs WHERE agent_id = %s ORDER BY is_primary DESC, created_at DESC",
                 (agent_id,),
             )
             rows = cursor.fetchall()
@@ -258,7 +258,7 @@ class ScrapeConfig:
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT * FROM scrape_configs WHERE agent_id = ? AND is_primary = 1 LIMIT 1",
+                "SELECT * FROM scrape_configs WHERE agent_id = %s AND is_primary = 1 LIMIT 1",
                 (agent_id,),
             )
             row = cursor.fetchone()
@@ -287,12 +287,12 @@ class ScrapeConfig:
         if not updates:
             return
 
-        set_clause = ", ".join([f"{k} = ?" for k in updates.keys()])
+        set_clause = ", ".join([f"{k} = %s" for k in updates.keys()])
         values = list(updates.values()) + [self.config_id]
 
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(f"UPDATE scrape_configs SET {set_clause} WHERE config_id = ?", values)
+            cursor.execute(f"UPDATE scrape_configs SET {set_clause} WHERE config_id = %s", values)
             conn.commit()
 
         for k, v in updates.items():
@@ -302,7 +302,7 @@ class ScrapeConfig:
     def delete(config_id):
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM scrape_configs WHERE config_id = ?", (config_id,))
+            cursor.execute("DELETE FROM scrape_configs WHERE config_id = %s", (config_id,))
             conn.commit()
             return cursor.rowcount > 0
 
@@ -339,7 +339,7 @@ class Subscription:
                 cursor.execute(
                     """
                     INSERT INTO subscriptions (subscription_id, agent_id, email)
-                    VALUES (?, ?, ?)
+                    VALUES (%s, %s, %s)
                     """,
                     (subscription_id, agent_id, email),
                 )
@@ -349,7 +349,7 @@ class Subscription:
                     cursor.execute(
                         """
                         SELECT subscription_id FROM subscriptions
-                        WHERE agent_id = ? AND email = ?
+                        WHERE agent_id = %s AND email = %s
                         """,
                         (agent_id, email),
                     )
@@ -364,7 +364,7 @@ class Subscription:
     def get_by_id(subscription_id):
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM subscriptions WHERE subscription_id = ?", (subscription_id,))
+            cursor.execute("SELECT * FROM subscriptions WHERE subscription_id = %s", (subscription_id,))
             row = cursor.fetchone()
             return Subscription(**dict(row)) if row else None
 
@@ -375,11 +375,11 @@ class Subscription:
 
             if active_only:
                 cursor.execute(
-                    "SELECT * FROM subscriptions WHERE agent_id = ? AND is_active = 1",
+                    "SELECT * FROM subscriptions WHERE agent_id = %s AND is_active = 1",
                     (agent_id,),
                 )
             else:
-                cursor.execute("SELECT * FROM subscriptions WHERE agent_id = ?", (agent_id,))
+                cursor.execute("SELECT * FROM subscriptions WHERE agent_id = %s", (agent_id,))
 
             rows = cursor.fetchall()
             return [Subscription(**dict(r)) for r in rows]
@@ -388,7 +388,7 @@ class Subscription:
     def get_by_email(email):
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM subscriptions WHERE email = ?", (email,))
+            cursor.execute("SELECT * FROM subscriptions WHERE email = %s", (email,))
             rows = cursor.fetchall()
             return [Subscription(**dict(r)) for r in rows]
 
@@ -396,7 +396,7 @@ class Subscription:
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "UPDATE subscriptions SET is_active = ? WHERE subscription_id = ?",
+                "UPDATE subscriptions SET is_active = %s WHERE subscription_id = %s",
                 (1 if is_active else 0, self.subscription_id),
             )
             conn.commit()
@@ -407,7 +407,7 @@ class Subscription:
     def delete(subscription_id):
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM subscriptions WHERE subscription_id = ?", (subscription_id,))
+            cursor.execute("DELETE FROM subscriptions WHERE subscription_id = %s", (subscription_id,))
             conn.commit()
             return cursor.rowcount > 0
 
@@ -454,7 +454,7 @@ class ChangeHistory:
                 INSERT INTO change_history
                 (change_id, agent_id, config_id, old_content_preview,
                  new_content_preview, change_summary)
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 """,
                 (change_id, agent_id, config_id, old_preview, new_preview, change_summary),
             )
@@ -466,7 +466,7 @@ class ChangeHistory:
     def get_by_id(change_id):
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM change_history WHERE change_id = ?", (change_id,))
+            cursor.execute("SELECT * FROM change_history WHERE change_id = %s", (change_id,))
             row = cursor.fetchone()
             return ChangeHistory(**dict(row)) if row else None
 
@@ -477,9 +477,9 @@ class ChangeHistory:
             cursor.execute(
                 """
                 SELECT * FROM change_history
-                WHERE agent_id = ?
+                WHERE agent_id = %s
                 ORDER BY detected_at DESC
-                LIMIT ?
+                LIMIT %s
                 """,
                 (agent_id, limit),
             )
@@ -493,9 +493,9 @@ class ChangeHistory:
             cursor.execute(
                 """
                 SELECT * FROM change_history
-                WHERE config_id = ?
+                WHERE config_id = %s
                 ORDER BY detected_at DESC
-                LIMIT ?
+                LIMIT %s
                 """,
                 (config_id, limit),
             )

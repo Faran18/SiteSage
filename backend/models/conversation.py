@@ -12,7 +12,7 @@ class Conversation:
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT conversation_id FROM conversations WHERE agent_id = ? ORDER BY created_at DESC LIMIT 1",
+                "SELECT conversation_id FROM conversations WHERE agent_id = %s ORDER BY created_at DESC LIMIT 1",
                 (agent_id,),
             )
             row = cursor.fetchone()
@@ -21,7 +21,7 @@ class Conversation:
 
             conversation_id = str(uuid.uuid4())
             cursor.execute(
-                "INSERT INTO conversations (conversation_id, agent_id, title) VALUES (?, ?, ?)",
+                "INSERT INTO conversations (conversation_id, agent_id, title) VALUES (%s, %s, %s)",
                 (conversation_id, agent_id, "Chat"),
             )
             conn.commit()
@@ -32,7 +32,7 @@ class Conversation:
         """Wipe conversation + messages for an agent (e.g. 'New Chat' button)."""
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM conversations WHERE agent_id = ?", (agent_id,))
+            cursor.execute("DELETE FROM conversations WHERE agent_id = %s", (agent_id,))
             conn.commit()
 
 
@@ -42,7 +42,7 @@ class Message:
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO messages (message_id, conversation_id, role, content) VALUES (?, ?, ?, ?)",
+                "INSERT INTO messages (message_id, conversation_id, role, content) VALUES (%s, %s, %s, %s)",
                 (str(uuid.uuid4()), conversation_id, role, content),
             )
             conn.commit()
@@ -59,12 +59,12 @@ class Message:
             cursor.execute(
                 """
                 SELECT role, content FROM messages
-                WHERE conversation_id = ?
+                WHERE conversation_id = %s
                 ORDER BY created_at DESC
-                LIMIT ?
+                LIMIT %s
                 """,
                 (conversation_id, limit),
             )
             rows = cursor.fetchall()
-            # rows come back newest-first; reverse to chronological order
+            
             return [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]

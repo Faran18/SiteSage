@@ -35,7 +35,7 @@ class Reminder:
             cursor.execute("""
                 INSERT INTO reminders 
                 (reminder_id, user_id, url, email, interval_hours, css_selector, xpath)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
             """, (reminder_id, user_id, url, email, interval_hours, css_selector, xpath))
             conn.commit()
         
@@ -46,7 +46,7 @@ class Reminder:
         """Get reminder by ID"""
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM reminders WHERE reminder_id = ?", (reminder_id,))
+            cursor.execute("SELECT * FROM reminders WHERE reminder_id = %s", (reminder_id,))
             row = cursor.fetchone()
             
             if row:
@@ -61,12 +61,12 @@ class Reminder:
 
             if active_only:
                 cursor.execute(
-                    "SELECT * FROM reminders WHERE user_id = ? AND is_active = 1 ORDER BY created_at DESC",
+                    "SELECT * FROM reminders WHERE user_id = %s AND is_active = 1 ORDER BY created_at DESC",
                     (user_id,)
                 )
             else:
                 cursor.execute(
-                    "SELECT * FROM reminders WHERE user_id = ? ORDER BY created_at DESC",
+                    "SELECT * FROM reminders WHERE user_id = %s ORDER BY created_at DESC",
                     (user_id,)
                 )
 
@@ -95,7 +95,7 @@ class Reminder:
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT * FROM reminders WHERE email = ? ORDER BY created_at DESC",
+                "SELECT * FROM reminders WHERE email = %s ORDER BY created_at DESC",
                 (email,)
             )
             rows = cursor.fetchall()
@@ -120,13 +120,13 @@ class Reminder:
         if not updates:
             return
         
-        set_clause = ", ".join([f"{k} = ?" for k in updates.keys()])
+        set_clause = ", ".join([f"{k} = %s" for k in updates.keys()])
         values = list(updates.values()) + [self.reminder_id]
         
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                f"UPDATE reminders SET {set_clause} WHERE reminder_id = ?",
+                f"UPDATE reminders SET {set_clause} WHERE reminder_id = %s",
                 values
             )
             conn.commit()
@@ -139,7 +139,7 @@ class Reminder:
         """Delete a reminder"""
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM reminders WHERE reminder_id = ?", (reminder_id,))
+            cursor.execute("DELETE FROM reminders WHERE reminder_id = %s", (reminder_id,))
             conn.commit()
             return cursor.rowcount > 0
     
@@ -190,7 +190,7 @@ class ReminderHistory:
                 INSERT INTO reminder_history 
                 (history_id, reminder_id, old_content_preview, 
                  new_content_preview, change_summary)
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s)
             """, (history_id, reminder_id, old_preview, new_preview, change_summary))
             conn.commit()
         
@@ -201,7 +201,7 @@ class ReminderHistory:
         """Get history by ID"""
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM reminder_history WHERE history_id = ?", (history_id,))
+            cursor.execute("SELECT * FROM reminder_history WHERE history_id = %s", (history_id,))
             row = cursor.fetchone()
             
             if row:
@@ -215,9 +215,9 @@ class ReminderHistory:
             cursor = conn.cursor()
             cursor.execute(
                 """SELECT * FROM reminder_history 
-                   WHERE reminder_id = ? 
+                   WHERE reminder_id = %s 
                    ORDER BY detected_at DESC 
-                   LIMIT ?""",
+                   LIMIT %s""",
                 (reminder_id, limit)
             )
             rows = cursor.fetchall()

@@ -60,7 +60,7 @@ class User:
     def get_by_id(user_id: str):
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+            cursor.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
             row = cursor.fetchone()
             return User(**dict(row)) if row else None
 
@@ -68,7 +68,7 @@ class User:
     def get_by_email(email: str):
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM users WHERE email = ?", (email.strip().lower(),))
+            cursor.execute("SELECT * FROM users WHERE email = %s", (email.strip().lower(),))
             row = cursor.fetchone()
             return User(**dict(row)) if row else None
 
@@ -97,7 +97,7 @@ class User:
             cursor.execute(
                 """
                 INSERT INTO users (user_id, email, password_hash, full_name, is_active)
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s)
                 """,
                 (user_id, email, password_hash, full_name.strip(), 1),
             )
@@ -116,7 +116,7 @@ class User:
 
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("UPDATE users SET last_login = ? WHERE user_id = ?", (datetime.now().isoformat(), user.user_id))
+            cursor.execute("UPDATE users SET last_login = %s WHERE user_id = %s", (datetime.now().isoformat(), user.user_id))
             conn.commit()
 
         return User.get_by_id(user.user_id)
@@ -138,12 +138,12 @@ class User:
         if not updates:
             return
 
-        set_clause = ", ".join([f"{k} = ?" for k in updates.keys()])
+        set_clause = ", ".join([f"{k} = %s" for k in updates.keys()])
         values = list(updates.values()) + [self.user_id]
 
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(f"UPDATE users SET {set_clause} WHERE user_id = ?", values)
+            cursor.execute(f"UPDATE users SET {set_clause} WHERE user_id = %s", values)
             conn.commit()
 
         fresh = User.get_by_id(self.user_id)
@@ -168,7 +168,7 @@ class User:
     def delete_completely(user_id: str) -> bool:
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
+            cursor.execute("DELETE FROM users WHERE user_id = %s", (user_id,))
             conn.commit()
             return cursor.rowcount > 0
 
@@ -192,7 +192,7 @@ class Session:
             cursor.execute(
                 """
                 INSERT INTO sessions (session_id, user_id, token, expires_at)
-                VALUES (?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s)
                 """,
                 (session_id, user_id, token, expires.isoformat()),
             )
@@ -204,7 +204,7 @@ class Session:
     def get_by_token(token: str):
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM sessions WHERE token = ?", (token,))
+            cursor.execute("SELECT * FROM sessions WHERE token = %s", (token,))
             row = cursor.fetchone()
             return Session(**dict(row)) if row else None
 
@@ -212,7 +212,7 @@ class Session:
     def get_by_user(user_id: str):
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM sessions WHERE user_id = ?", (user_id,))
+            cursor.execute("SELECT * FROM sessions WHERE user_id = %s", (user_id,))
             rows = cursor.fetchall()
             return [Session(**dict(r)) for r in rows]
 
@@ -220,7 +220,7 @@ class Session:
     def delete_all_user_sessions(user_id: str):
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+            cursor.execute("DELETE FROM sessions WHERE user_id = %s", (user_id,))
             conn.commit()
             return cursor.rowcount
 
@@ -230,7 +230,7 @@ class Session:
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "DELETE FROM sessions WHERE expires_at IS NOT NULL AND expires_at < ?",
+                "DELETE FROM sessions WHERE expires_at IS NOT NULL AND expires_at < %s",
                 (now_iso,),
             )
             conn.commit()

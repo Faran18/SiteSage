@@ -23,7 +23,7 @@ class PasswordReset:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO password_resets (reset_id, user_id, token, expires_at, used)
-                VALUES (?, ?, ?, ?, 0)
+                VALUES (%s, %s, %s, %s, 0)
             """, (reset_id, user_id, token, expires_at))
             conn.commit()
 
@@ -33,7 +33,7 @@ class PasswordReset:
     def get_by_token(token: str):
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM password_resets WHERE token = ?", (token,))
+            cursor.execute("SELECT * FROM password_resets WHERE token = %s", (token,))
             row = cursor.fetchone()
             if row:
                 return PasswordReset(**dict(row))
@@ -47,7 +47,7 @@ class PasswordReset:
     def mark_used(self):
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("UPDATE password_resets SET used = 1 WHERE reset_id = ?", (self.reset_id,))
+            cursor.execute("UPDATE password_resets SET used = 1 WHERE reset_id = %s", (self.reset_id,))
             conn.commit()
         self.used = 1
 
@@ -55,6 +55,6 @@ class PasswordReset:
     def cleanup_expired():
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM password_resets WHERE expires_at < ? OR used = 1", (datetime.now().isoformat(),))
+            cursor.execute("DELETE FROM password_resets WHERE expires_at < %s OR used = 1", (datetime.now().isoformat(),))
             conn.commit()
             return cursor.rowcount

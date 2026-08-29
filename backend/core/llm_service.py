@@ -12,6 +12,7 @@ load_dotenv()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 MODEL_NAME = "openai/gpt-oss-120b"  
+MODERATION_MODEL = "meta-llama/Llama-Guard-4-12B"
 
 if not GROQ_API_KEY:
     print("⚠️ WARNING: GROQ_API_KEY not found in environment variables!")
@@ -22,6 +23,32 @@ else:
 
 # Initialize Groq client
 client = Groq(api_key=GROQ_API_KEY)
+
+
+# ========================================
+# CONTENT MODERATION FUNCTION
+# ========================================
+
+def moderate_message(text: str) -> bool:
+    """
+    Runs a single message through Groq-hosted Llama Guard 4.
+    Catches abuse/hate speech/threats that a plain wordlist filter misses
+    (misspellings, veiled harassment, context-dependent hostility).
+
+    Returns True if the message is flagged unsafe, False if safe.
+    Fails open (returns False) on any API error — a moderation-service
+    hiccup should never block a legitimate user from chatting.
+    """
+    try:
+        response = client.chat.completions.create(
+            model=MODERATION_MODEL,
+            messages=[{"role": "user", "content": text}],
+        )
+        verdict = response.choices[0].message.content.strip().lower()
+        return verdict.startswith("unsafe")
+    except Exception as e:
+        print(f"⚠️ Llama Guard check failed, failing open: {e}")
+        return False
 
 
 # ========================================

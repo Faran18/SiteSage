@@ -210,7 +210,7 @@ export default function ChatPage() {
                 onChange={(e) => setMultiPage(e.target.checked)}
                 className="rounded border-gray-300 text-primary-500 focus:ring-primary-500"
               />
-              <span>Crawl multiple pages (follow pagination and subcategories on this site)</span>
+              <span>Crawl multiple pages</span>
             </label>
             {multiPage && (
               <label className="flex items-center mt-2 ml-6 text-sm text-gray-600 space-x-2">

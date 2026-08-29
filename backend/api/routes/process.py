@@ -3,8 +3,9 @@
 import re
 from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel
-from backend.core.vector_db import query_similar
-from backend.core.llm_service import run_chat
+from better_profanity import profanity
+from backend.core.vector_db import query_similar, is_semantically_small_talk
+from backend.core.llm_service import run_chat, moderate_message
 from backend.models.agent import Agent, ScrapeConfig
 from backend.models.conversation import Conversation, Message
 from backend.models.user import User
@@ -13,10 +14,24 @@ from backend.core.limiter import limiter
 
 router = APIRouter()
 
+profanity.load_censor_words()
+
+
+def is_abusive(query: str) -> bool:
+    """
+    True if the message contains profanity/slurs (fast wordlist check,
+    checked first since it's free and instant) or is flagged unsafe by
+    Llama Guard (catches what the wordlist misses — veiled harassment,
+    threats, misspellings designed to dodge a wordlist).
+    """
+    if profanity.contains_profanity(query):
+        return True
+    return moderate_message(query)
+
 
 # Common small-talk openers that don't need the knowledge base searched at all
 _SMALL_TALK_PATTERNS = [
-    r"^(hi|hello|hey|hola|yo|sup|howdy|greetings)[\s!.,]*$",
+    r"^(hi|hello|hey|hola|yo|sup|howdy|greetings)(\s+(there|friend|guys|everyone|folks))?[\s!.,]*$",
     r"^good (morning|afternoon|evening|day)[\s!.,]*$",
     r"^(how are you|how's it going|what's up)[\s?!.,]*$",
     r"^(thanks|thank you|thx|ty)[\s!.,]*$",
@@ -26,8 +41,15 @@ _SMALL_TALK_RE = re.compile("|".join(_SMALL_TALK_PATTERNS), re.IGNORECASE)
 
 
 def is_small_talk(query: str) -> bool:
-    """True if the message is pure small talk with no real question in it."""
-    return bool(_SMALL_TALK_RE.match(query.strip()))
+    """
+    True if the message is pure small talk with no real question in it.
+    Checks the literal regex first (free, instant), then falls back to a
+    semantic check for phrasings the regex doesn't cover.
+    """
+    query = query.strip()
+    if _SMALL_TALK_RE.match(query):
+        return True
+    return is_semantically_small_talk(query)
 
 
 class ProcessRequest(BaseModel):
@@ -61,6 +83,27 @@ def process_data(request: Request, data: ProcessRequest, user: User = Depends(ge
         source_url = primary_config.url if primary_config else "Unknown source"
 
         conversation_id = Conversation.get_or_create_for_agent(agent.agent_id)
+
+        # ── Abuse / profanity short-circuit ──────────────────────────
+        if is_abusive(data.query):
+            print("🚫 Offensive language detected — declining to engage")
+
+            boundary_message = (
+                f"I'm happy to help you find a car, but I'm not able to "
+                f"continue if the conversation includes offensive language. "
+                f"Let me know the make, model, or year you're interested in "
+                f"and I'll pull up what's available."
+            )
+
+            Message.add(conversation_id, "user", data.query)
+            Message.add(conversation_id, "assistant", boundary_message)
+
+            return {
+                "message": boundary_message,
+                "agent_name": agent.name,
+                "source_url": source_url,
+                "chunks_used": 0
+            }
 
         # ── Small talk short-circuit ─────────────────────────────────
         # A bare "hello" doesn't need the knowledge base searched — doing
