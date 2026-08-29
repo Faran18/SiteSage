@@ -4,8 +4,8 @@ import uuid
 import chromadb
 from chromadb.utils import embedding_functions
 from typing import Optional
+from backend.core.config import VECTOR_DB_PATH
 
-VECTOR_DB_PATH = "E:/web_scraper/data/vectors"
 EMBEDDING_MODEL_PATH = "sentence-transformers/all-MiniLM-L6-v2"
 
 client = chromadb.PersistentClient(path=VECTOR_DB_PATH)

@@ -1,6 +1,6 @@
 # backend/api/routes/scrape.py
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel, HttpUrl
 import asyncio
 import hashlib
@@ -10,6 +10,7 @@ from backend.core.vector_db import store_scraped_data
 from backend.models.agent import Agent, ScrapeConfig
 from backend.models.user import User
 from backend.core.auth import get_current_user
+from backend.core.limiter import limiter
 from datetime import datetime
 
 router = APIRouter()
@@ -27,7 +28,8 @@ class ScrapeRequest(BaseModel):
 
 
 @router.post("/scrape")
-async def scrape_and_store(data: ScrapeRequest, user: User = Depends(get_current_user)):  # ✅ Require auth
+@limiter.limit("5/minute")
+async def scrape_and_store(request: Request, data: ScrapeRequest, user: User = Depends(get_current_user)):  # ✅ Require auth
     """
     Scrape URL(s) and store in agent's knowledge base.
     Supports single page or multi-page crawling.
@@ -138,7 +140,8 @@ async def scrape_and_store(data: ScrapeRequest, user: User = Depends(get_current
 
 
 @router.post("/scrape/refresh/{agent_id}")
-async def refresh_agent_data(agent_id: str, user: User = Depends(get_current_user)):  # ✅ Require auth
+@limiter.limit("5/minute")
+async def refresh_agent_data(request: Request, agent_id: str, user: User = Depends(get_current_user)):  # ✅ Require auth
     """Re-scrape primary URL for an agent"""
     try:
         agent = Agent.get_by_id(agent_id)
@@ -155,7 +158,7 @@ async def refresh_agent_data(agent_id: str, user: User = Depends(get_current_use
         if not primary:
             raise HTTPException(status_code=404, detail="No scrape config found")
         
-        return await scrape_and_store(ScrapeRequest(
+        return await scrape_and_store(request, ScrapeRequest(
             agent_id=agent_id,
             url=primary.url,
             css_selector=primary.css_selector,

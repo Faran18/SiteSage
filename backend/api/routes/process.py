@@ -1,7 +1,7 @@
 # backend/api/routes/process.py
 
 import re
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel
 from backend.core.vector_db import query_similar
 from backend.core.llm_service import run_chat
@@ -9,14 +9,12 @@ from backend.models.agent import Agent, ScrapeConfig
 from backend.models.conversation import Conversation, Message
 from backend.models.user import User
 from backend.core.auth import get_current_user
+from backend.core.limiter import limiter
 
 router = APIRouter()
 
 
-# Common small-talk openers that don't need the knowledge base searched at
-# all. Matched only when the ENTIRE message is essentially just this phrase
-# (short, no other real content) — so "hello, do you have any BMWs" still
-# goes through normal retrieval, only a bare "hello" gets short-circuited.
+# Common small-talk openers that don't need the knowledge base searched at all
 _SMALL_TALK_PATTERNS = [
     r"^(hi|hello|hey|hola|yo|sup|howdy|greetings)[\s!.,]*$",
     r"^good (morning|afternoon|evening|day)[\s!.,]*$",
@@ -39,7 +37,8 @@ class ProcessRequest(BaseModel):
 
 
 @router.post("/process")
-def process_data(data: ProcessRequest, user: User = Depends(get_current_user)):  # ✅ Require auth
+@limiter.limit("10/minute")
+def process_data(request: Request, data: ProcessRequest, user: User = Depends(get_current_user)):  # ✅ Require auth
     """Chat with an agent using its knowledge base."""
     try:
         agent = Agent.get_by_id(data.agent_id)
@@ -250,10 +249,11 @@ def reset_conversation(agent_id: str, user: User = Depends(get_current_user)):  
 
 
 @router.post("/agents/{agent_id}/chat")
-def chat_with_agent(agent_id: str, query: str, user: User = Depends(get_current_user)):  # ✅ Require auth
+@limiter.limit("10/minute")
+def chat_with_agent(request: Request, agent_id: str, query: str, user: User = Depends(get_current_user)):  # ✅ Require auth
     """Simplified chat endpoint."""
     try:
-        return process_data(ProcessRequest(
+        return process_data(request, ProcessRequest(
             agent_id=agent_id,
             query=query
         ), user=user)

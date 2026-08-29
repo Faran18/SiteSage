@@ -2,8 +2,13 @@
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from slowapi import _rate_limit_exceeded_handler
 from backend.api import api_router
 from backend.core.scheduler import start_scheduler, stop_scheduler
+from backend.core.config import FRONTEND_BASE_URL
+from backend.core.limiter import limiter
 from backend.models import init_database
 from backend.models.user import Session  
 
@@ -13,13 +18,18 @@ app = FastAPI(
     version="2.0.0"
 )
 
-# ✅ CORS middleware - Must be added BEFORE routes
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # For production, specify your frontend domain
+    allow_origins=[FRONTEND_BASE_URL],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 # Include API routes

@@ -13,4 +13,7 @@ SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 
 SUBSCRIBERS = {}      
 SUBSCRIBED_SITES = set()  # dynamic set of sites
-FRONTEND_BASE_URL = "http://127.0.0.1:5173"
+FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://127.0.0.1:5173")
+
+DATABASE_PATH = os.getenv("DATABASE_PATH", "./data/agents.db")
+VECTOR_DB_PATH = os.getenv("VECTOR_DB_PATH", "./data/vectors")

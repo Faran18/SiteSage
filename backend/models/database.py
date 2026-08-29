@@ -3,9 +3,7 @@
 import sqlite3
 from contextlib import contextmanager
 import os
-
-# Database file location
-DATABASE_PATH = "E:/web_scraper/data/agents.db"
+from backend.core.config import DATABASE_PATH
 
 # Ensure data directory exists
 os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
