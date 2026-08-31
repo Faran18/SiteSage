@@ -12,6 +12,7 @@ if not SUPABASE_DB_URL:
         "Supabase dashboard > Project Settings > Database > Connection string > URI."
     )
 
+
 _pool = pg_pool.ThreadedConnectionPool(
     minconn=1,
     maxconn=10,
@@ -32,8 +33,7 @@ def get_db_connection():
     call, and always returns it to the pool when done (or discards it if
     something went wrong mid-transaction, so a bad connection doesn't get
     handed to the next caller).
-    cursor_factory=RealDictCursor makes rows behave like sqlite3.Row did -
-    dict(row) still works everywhere it's used in the model files.
+    cursor_factory=RealDictCursor makes rows behave like sqlite3.
     """
     conn = _pool.getconn()
 
@@ -232,6 +232,41 @@ def init_database():
         cursor.execute("ALTER TABLE reminders ADD COLUMN IF NOT EXISTS user_id TEXT")
 
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_reminders_user ON reminders(user_id)")
+
+        # ── Vector store (replaces local ChromaDB) ──────────────────
+        # Also enable this manually in Supabase dashboard > Database >
+        # Extensions > vector, if this CREATE EXTENSION call lacks
+        # sufficient privilege on your plan.
+        cursor.execute("CREATE EXTENSION IF NOT EXISTS vector")
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS agent_chunks (
+                chunk_id TEXT PRIMARY KEY,
+                agent_id TEXT NOT NULL,
+                scrape_id TEXT NOT NULL,
+                source_url TEXT,
+                chunk_index INT,
+                total_chunks INT,
+                css_selector TEXT,
+                xpath TEXT,
+                content TEXT NOT NULL,
+                embedding VECTOR(384),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                FOREIGN KEY (agent_id) REFERENCES agents(agent_id) ON DELETE CASCADE
+            )
+        """)
+
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_agent_chunks_agent ON agent_chunks(agent_id)")
+        # Used by the 10-day cleanup job (delete_expired_chunks) to find old rows fast
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_agent_chunks_created ON agent_chunks(created_at)")
+        # ivfflat = approximate nearest-neighbor index, what makes the
+        # "find closest embeddings" query in query_similar() fast instead
+        # of scanning every row.
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_agent_chunks_embedding
+            ON agent_chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)
+        """)
 
         conn.commit()
         print("Database initialized successfully (Supabase/Postgres)")

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Plus, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { agentService } from '../services/agentService';
@@ -7,6 +8,7 @@ import CreateAgentModal from '../components/agents/CreateAgentModal';
 import UpdateAgentModal from '../components/agents/UpdateAgentModal';
 
 export default function MyAgents() {
+  const navigate = useNavigate();
   const [agents, setAgents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -35,10 +37,15 @@ export default function MyAgents() {
 
   const handleCreateAgent = async (name, role) => {
     try {
-      await agentService.createAgent(name, role);
+      const result = await agentService.createAgent(name, role);
       toast.success('Agent created successfully!');
       setCreateModalOpen(false);
-      fetchAgents();
+
+      // Go straight to the new agent instead of dropping back into the
+      // list - with duplicate names/roles it's too easy to click the
+      // wrong row and end up scraping one agent while chatting with
+      // another (identical-looking) one.
+      navigate(`/agents/${result.agent.agent_id}/chat`);
     } catch (error) {
       toast.error('Failed to create agent');
       console.error(error);

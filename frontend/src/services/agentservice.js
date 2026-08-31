@@ -54,6 +54,12 @@ export const agentService = {
     return response.data;
   },
 
+  // Get stored chat history for an agent (so a page refresh doesn't lose it)
+  getChatHistory: async (agentId) => {
+    const response = await api.get(`/agents/${agentId}/chat/history`);
+    return response.data;
+  },
+
   // Chat with agent
   chat: async (agentId, query) => {
     const response = await api.post('/process', {

@@ -94,6 +94,80 @@ def moderate_message(text: str) -> bool:
 
 
 # ========================================
+# SCRAPED CONTENT CLEANING FUNCTION
+# ========================================
+
+_CLEANING_SYSTEM_PROMPT = """You clean raw scraped website text before it's
+stored in a knowledge base for a RAG chatbot.
+
+Remove: navigation menus, footers, cookie banners, "powered by" / copyright
+lines, social media links, citation/reference lists and footnotes (e.g.
+"Retrieved <date>", "ISSN", "S2CID", "Jump up to:", "Archived from the
+original"), ads, and any other boilerplate that isn't substantive content.
+
+Keep: all substantive content EXACTLY as written - product/vehicle details,
+prices, descriptions, policies, contact info, FAQs, etc. Do not summarize,
+paraphrase, or rewrite kept content. Do not add commentary or headers of
+your own. Preserve the original paragraph breaks in what you keep.
+
+Output ONLY the cleaned text. No preamble, no explanation, nothing else."""
+
+
+def clean_scraped_content(raw_text: str) -> str:
+    """
+    Runs raw scraped page text through the LLM to strip navigation/footer/
+    citation noise before it gets chunked and embedded - replaces having to
+    maintain a growing noise-keyword list. Only called once per scrape
+    (not per chat message), so the cost is amortized over the agent's
+    whole lifetime rather than multiplied by conversation volume.
+
+    Fails open: on any error, or if the model returns something clearly
+    broken (empty, or wildly shorter than the input), returns the original
+    raw text unchanged so a cleaning hiccup never blocks a scrape.
+    """
+    if not raw_text or len(raw_text) < 200:
+        return raw_text  # too short to be worth cleaning
+
+    # Rough chars-to-tokens estimate (~4 chars/token). Groq's on_demand tier
+    # caps this model at 8000 tokens/minute for the whole org - a request
+    # anywhere near that limit will 413 immediately, so skip the guaranteed-
+    # to-fail call rather than eating the latency of a doomed round trip.
+    # (This is an account rate limit, not the model's actual 131K context
+    # window - upgrading Groq's tier raises this ceiling if needed.)
+    estimated_tokens = len(raw_text) // 4
+    if estimated_tokens > 6000:  # leave headroom under the 8000 TPM cap
+        print(f"⚠️ Skipping cleaning: ~{estimated_tokens} estimated tokens exceeds the account's TPM budget - using raw text")
+        return raw_text
+
+    try:
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "system", "content": _CLEANING_SYSTEM_PROMPT},
+                {"role": "user", "content": raw_text},
+            ],
+            max_tokens=8000,
+            temperature=0.1,  # deterministic - this is cleanup, not creative writing
+            reasoning_effort="low",
+        )
+        cleaned = response.choices[0].message.content.strip()
+
+        # Sanity check: if the model gutted way more than boilerplate
+        # plausibly accounts for, something went wrong - use the raw text
+        # instead of risking losing real content.
+        if not cleaned or len(cleaned) < len(raw_text) * 0.2:
+            print(f"⚠️ Cleaned text suspiciously short ({len(cleaned)} vs {len(raw_text)} chars) - using raw text instead")
+            return raw_text
+
+        print(f"🧹 Cleaned scraped content: {len(raw_text)} → {len(cleaned)} chars")
+        return cleaned
+
+    except Exception as e:
+        print(f"⚠️ Content cleaning failed, using raw text: {e}")
+        return raw_text
+
+
+# ========================================
 # LLM INFERENCE FUNCTION
 # ========================================
 
@@ -295,3 +369,18 @@ def test_groq_connection():
         return False
 
 
+# Run test on import (optional)
+if __name__ == "__main__":
+    print("\n" + "="*60)
+    print("Groq LLM Service - Connection Test")
+    print("="*60 + "\n")
+    
+    info = get_model_info()
+    print(f"Model: {info['model_name']}")
+    print(f"API Key Set: {info['api_key_set']}")
+    print(f"Max Context: {info['max_tokens']} tokens\n")
+    
+    if info['api_key_set']:
+        test_groq_connection()
+    else:
+        print("⚠️ Please set GROQ_API_KEY in your .env file")

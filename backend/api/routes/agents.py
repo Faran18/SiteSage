@@ -1,12 +1,10 @@
-# backend/api/routes/agents.py (COMPLETE FILE)
+# backend/api/routes/agents.py
 
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from backend.models.agent import Agent
 from backend.models.user import User
-from backend.core.vector_db import VECTOR_DB_PATH, sentence_ef
 from backend.core.auth import get_current_user
-from chromadb import PersistentClient
 
 router = APIRouter()
 
@@ -41,17 +39,10 @@ async def create_agent(data: CreateAgentRequest, user: User = Depends(get_curren
         )
         
         print(f"✅ Created agent: {agent.agent_id} - {agent.name} (user: {user.email})")
-        
-        # Create empty ChromaDB collection
-        collection_name = f"agent_{agent.agent_id}"
-        client = PersistentClient(path=VECTOR_DB_PATH)
-        client.get_or_create_collection(
-            name=collection_name,
-            embedding_function=sentence_ef
-        )
-        
-        print(f"📦 Created collection: {collection_name}")
-        
+
+        # Nothing to pre-create in pgvector - rows just get inserted into
+        # agent_chunks once /scrape actually runs for this agent.
+
         return {
             "message": "Agent created successfully",
             "agent": agent.to_dict(),
@@ -188,17 +179,9 @@ def delete_agent(agent_id: str, user: User = Depends(get_current_user)):  # ✅ 
         # ✅ Check ownership
         if agent.user_id != user.user_id:
             raise HTTPException(status_code=403, detail="Access denied")
-    
-        # Delete ChromaDB collection
-        collection_name = f"agent_{agent_id}"
-        try:
-            client = PersistentClient(path=VECTOR_DB_PATH)
-            client.delete_collection(name=collection_name)
-            print(f"✅ Deleted ChromaDB collection: {collection_name}")
-        except Exception as e:
-            print(f"⚠️ Could not delete ChromaDB collection: {e}")
-        
-        # Delete from SQLite (cascades to scrape_configs)
+
+        # Delete from Postgres (cascades to scrape_configs, and
+        # Agent.delete() internally clears the agent's vector chunks too)
         success = Agent.delete(agent_id)
         
         if success:

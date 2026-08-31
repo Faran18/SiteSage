@@ -66,5 +66,34 @@ class Message:
                 (conversation_id, limit),
             )
             rows = cursor.fetchall()
-            
+            # rows come back newest-first; reverse to chronological order
             return [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
+
+    @staticmethod
+    def get_all(conversation_id: str) -> list[dict]:
+        """
+        Returns the FULL message history for a conversation, oldest first,
+        with message_id and created_at included - for rendering the chat
+        UI on page load, not for feeding the LLM (use get_recent for that,
+        it's deliberately capped so old turns don't bloat every prompt).
+        """
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT message_id, role, content, created_at FROM messages
+                WHERE conversation_id = %s
+                ORDER BY created_at ASC
+                """,
+                (conversation_id,),
+            )
+            rows = cursor.fetchall()
+            return [
+                {
+                    "message_id": r["message_id"],
+                    "role": r["role"],
+                    "content": r["content"],
+                    "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+                }
+                for r in rows
+            ]

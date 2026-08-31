@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Send, ArrowLeft, Bot, User, Loader2, Plus, Link as LinkIcon, RotateCcw } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { agentService } from '../services/agentservice';
+import { agentService } from '../services/agentService';
 
 export default function ChatPage() {
   const { agentId } = useParams();
@@ -21,6 +21,7 @@ export default function ChatPage() {
 
   useEffect(() => {
     fetchAgent();
+    fetchChatHistory();
   }, [agentId]);
 
   useEffect(() => {
@@ -46,6 +47,23 @@ export default function ChatPage() {
       navigate('/agents');
     } finally {
       setLoadingAgent(false);
+    }
+  };
+
+  const fetchChatHistory = async () => {
+    try {
+      const response = await agentService.getChatHistory(agentId);
+      const stored = (response.messages || []).map((m) => ({
+        message_id: m.message_id,
+        role: m.role,
+        content: m.content,
+      }));
+      setMessages(stored);
+    } catch (error) {
+      // Non-fatal - chat still works, it just starts empty instead of
+      // restoring history. Don't block the page or show an error toast
+      // for this since the user didn't take an action that failed.
+      console.error('Failed to load chat history', error);
     }
   };
 
@@ -247,7 +265,7 @@ export default function ChatPage() {
           ) : (
             messages.map((message, index) => (
               <div
-                key={index}
+                key={message.message_id || index}
                 className={`flex ${
                   message.role === 'user' ? 'justify-end' : 'justify-start'
                 }`}

@@ -6,7 +6,7 @@ from datetime import datetime
 import hashlib
 from backend.models.agent import Agent, ScrapeConfig, ChangeHistory
 from backend.utils.playwright_scraper import scrape_website, extract_text_from_html
-from backend.core.vector_db import store_scraped_data
+from backend.core.vector_db import store_scraped_data, delete_expired_chunks
 from backend.utils.email_sender import send_change_notification
 from backend.core.llm_service import run_llm
 from backend.models.agent import Subscription
@@ -52,10 +52,8 @@ def scrape_and_check_changes(config: ScrapeConfig):
             print(f"🔔 Content changed detected!")
             
             # Get old content from vector DB for comparison
-            from backend.core.vector_db import get_agent_collection
-            collection = get_agent_collection(config.agent_id)
-            old_data = collection.get(limit=1)
-            old_text = old_data['documents'][0][0] if old_data['documents'] else ""
+            from backend.core.vector_db import get_latest_chunk_text
+            old_text = get_latest_chunk_text(config.agent_id)
             
             # Generate change summary using LLM
             change_summary = generate_change_summary(old_text[:1500], new_text[:1500])
@@ -267,6 +265,20 @@ Summary:"""
 # SCHEDULER CONTROL
 # ========================================
 
+# ========================================
+# EMBEDDING CLEANUP (Supabase free tier = 500MB storage cap)
+# ========================================
+
+def cleanup_expired_embeddings():
+    """Runs daily. Deletes chunk embeddings older than 10 days so vector
+    storage doesn't grow past Supabase's free-tier 500MB cap."""
+    try:
+        deleted = delete_expired_chunks(max_age_days=10)
+        print(f"🧹 Embedding cleanup: removed {deleted} chunks older than 10 days")
+    except Exception as e:
+        print(f"⚠️ Embedding cleanup failed: {e}")
+
+
 def start_scheduler():
     """Initialize and start the scheduler"""
     from backend.models.reminder import Reminder
@@ -296,6 +308,15 @@ def start_scheduler():
     except Exception as e:
         print(f"⚠️ Could not load reminders: {e}")
     
+    # Daily embedding cleanup (10-day TTL, keeps Supabase storage under the free-tier cap)
+    scheduler.add_job(
+        func=cleanup_expired_embeddings,
+        trigger=IntervalTrigger(hours=24),
+        id="embedding_cleanup",
+        name="Cleanup expired embeddings",
+        replace_existing=True
+    )
+
     scheduler.start()
     print("✅ Scheduler started")
 
