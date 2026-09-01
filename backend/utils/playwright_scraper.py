@@ -30,6 +30,26 @@ def scrape_website(url: str):
     return content
 
 
+# Structural boilerplate that's essentially never useful content, on any
+# site - removed from the DOM before extraction so it can't end up in any
+# of the extraction paths below (css_selector, xpath, main-content, or
+# body fallback all benefit from this running first).
+NOISE_SELECTORS = [
+    "nav", "footer",
+    "[role='navigation']",
+    ".cookie-banner", ".cookie-consent", "#cookie-notice", "#cookie-banner",
+    ".advertisement", ".ads", "[class*='banner-ad']",
+    ".social-share", ".share-buttons",
+    ".breadcrumb", ".breadcrumbs",
+    # Citation/reference sections - the Wikipedia-style noise, but these
+    # patterns show up on plenty of ordinary sites too (legal pages,
+    # articles with footnotes)
+    ".reference", "sup.reference", ".references", "#references",
+    ".mw-references-wrap", ".citation", ".cite_note", ".navbox",
+    ".catlinks", ".printfooter", ".mw-editsection", ".footnotes",
+]
+
+
 def extract_text_from_html(html_content: str, css_selector: str = None, xpath: str = None):
     """Extract text with MINIMAL cleaning to preserve content"""
     
@@ -39,6 +59,13 @@ def extract_text_from_html(html_content: str, css_selector: str = None, xpath: s
     unwanted_tags = ["script", "style", "noscript", "iframe"]
     for tag in unwanted_tags:
         for el in soup.find_all(tag):
+            el.decompose()
+
+    # Step 1b: Remove structural boilerplate (nav/footer/citations/ads) -
+    # runs before ANY extraction path below, so a css_selector or xpath
+    # that happens to wrap one of these regions won't pull it back in.
+    for selector in NOISE_SELECTORS:
+        for el in soup.select(selector):
             el.decompose()
     
     # Step 2: If user provided selector, use it

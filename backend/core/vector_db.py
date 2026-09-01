@@ -8,7 +8,6 @@ from backend.core.llm_service import clean_scraped_content
 
 EMBEDDING_MODEL_PATH = "sentence-transformers/all-MiniLM-L6-v2"
 
-
 sentence_ef = embedding_functions.SentenceTransformerEmbeddingFunction(
     model_name=EMBEDDING_MODEL_PATH
 )
@@ -111,6 +110,18 @@ def store_scraped_data(agent_id: str, url: str, text: str,
     """Clean, chunk, embed, and store scraped data in the agent_chunks table."""
 
     scrape_id = str(uuid.uuid4())
+
+    # Hard ceiling per scrape, independent of how clean the content is.
+    # Even perfectly legitimate content (a huge product catalog, a page
+    # nobody flagged as "noisy") could otherwise blow past Supabase's
+    # 500MB pgvector cap on its own - noise filtering fixes content
+    # QUALITY, this fixes content QUANTITY. ~100k chars is roughly a long
+    # article's worth of real content; anything past that gets truncated,
+    # not rejected, so a scrape never fails outright because of size.
+    MAX_SCRAPE_CHARS = 100_000
+    if len(text) > MAX_SCRAPE_CHARS:
+        print(f"⚠️ Scraped content ({len(text)} chars) exceeds the {MAX_SCRAPE_CHARS}-char cap - truncating")
+        text = text[:MAX_SCRAPE_CHARS]
 
     # Clean before chunking, not after - removes boilerplate/citation noise
     # at the source instead of trying to filter it back out of chunks at
