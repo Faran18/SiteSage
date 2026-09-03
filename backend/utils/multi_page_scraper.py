@@ -70,7 +70,7 @@ def scrape_multiple_pages(start_url: str, max_pages: int = 20,
             try:
                 print(f"🔍 Scraping ({len(visited_urls) + 1}/{max_pages}): {current_url}")
                 
-                page.goto(current_url, timeout=30000, wait_until="domcontentloaded")
+                page.goto(current_url, timeout=100000, wait_until="domcontentloaded")
                 page.wait_for_timeout(1000)
                 
                 html_content = page.content()
