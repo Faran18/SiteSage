@@ -18,6 +18,7 @@ export default function ChatPage() {
   const [multiPage, setMultiPage] = useState(false);
   const [maxPages, setMaxPages] = useState(25);
   const messagesEndRef = useRef(null);
+  const isSubmittingRef = useRef(false); // synchronous guard against double-submit
 
   useEffect(() => {
     fetchAgent();
@@ -85,8 +86,15 @@ export default function ChatPage() {
 
   const handleAddUrl = async (e) => {
     e.preventDefault();
-    
+
     if (!newUrl.trim()) return;
+
+    // Synchronous guard: React state (`scraping`) doesn't update the DOM
+    // instantly, so a very fast double-click/double-Enter can fire this
+    // handler twice before the button actually disables. A ref updates
+    // immediately, so this blocks the second call for real.
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
 
     try {
       setScraping(true);
@@ -107,6 +115,7 @@ export default function ChatPage() {
       console.error(error);
     } finally {
       setScraping(false);
+      isSubmittingRef.current = false;
     }
   };
 

@@ -15,6 +15,8 @@ from datetime import datetime
 
 router = APIRouter()
 
+_scraping_in_progress: set[str] = set()
+
 class ScrapeRequest(BaseModel):
     """Request body for scraping"""
     agent_id: str
@@ -34,16 +36,23 @@ async def scrape_and_store(request: Request, data: ScrapeRequest, user: User = D
     Scrape URL(s) and store in agent's knowledge base.
     Supports single page or multi-page crawling.
     """
+    agent = Agent.get_by_id(data.agent_id)
+
+    if not agent:
+        raise HTTPException(status_code=404, detail=f"Agent not found: {data.agent_id}")
+
+    # ✅ Check ownership — only the owner can scrape into their own agent
+    if agent.user_id != user.user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    # ✅ Reject a second concurrent scrape for the same agent (double-click,
+    # duplicate request, another tab, etc.) instead of launching a second
+    # Chromium instance alongside the first on a resource-constrained box.
+    if data.agent_id in _scraping_in_progress:
+        raise HTTPException(status_code=409, detail="A scrape is already running for this agent")
+    _scraping_in_progress.add(data.agent_id)
+
     try:
-        agent = Agent.get_by_id(data.agent_id)
-        
-        if not agent:
-            raise HTTPException(status_code=404, detail=f"Agent not found: {data.agent_id}")
-        
-        # ✅ Check ownership — only the owner can scrape into their own agent
-        if agent.user_id != user.user_id:
-            raise HTTPException(status_code=403, detail="Access denied")
-        
         print(f"🤖 Scraping for agent: {agent.name}")
         print(f"🔗 URL: {data.url}")
         print(f"📄 Multi-page: {data.multi_page}")
@@ -131,12 +140,14 @@ async def scrape_and_store(request: Request, data: ScrapeRequest, user: User = D
             "vector_db_result": vector_result,
             "pages_scraped": result['total_pages'] if data.multi_page else 1
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
         print(f"❌ Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        _scraping_in_progress.discard(data.agent_id)
 
 
 @router.post("/scrape/refresh/{agent_id}")
