@@ -5,7 +5,9 @@ from playwright.sync_api import sync_playwright
 
 def scrape_website(url: str):
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(
+            headless=True,
+            args=["--disable-dev-shm-usage", "--no-sandbox"])
         page = browser.new_page()
         
         page.route("**/*", lambda route: route.abort()

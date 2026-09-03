@@ -48,7 +48,9 @@ def scrape_multiple_pages(start_url: str, max_pages: int = 20,
     root_prefix = urlparse(start_url).path
     
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(
+            headless=True,
+            args=["--disable-dev-shm-usage", "--no-sandbox"])
         page = browser.new_page()
         
         # Block resources
