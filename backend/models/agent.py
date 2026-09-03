@@ -108,8 +108,10 @@ class Agent:
 
     def update(self, **kwargs):
         allowed_fields = ["name", "role", "status", "last_scraped", "chunks_count"]
-        updates = {k: (int(v) if isinstance(v, bool) else v)
-                   for k, v in kwargs.items() if k in allowed_fields}
+        updates = {
+            k: (int(v) if isinstance(v, bool) else v)
+            for k, v in kwargs.items() if k in allowed_fields}
+
 
         if not updates:
             return
@@ -283,7 +285,9 @@ class ScrapeConfig:
             "last_content_hash",
             "is_primary",
         ]
-        updates = {k: v for k, v in kwargs.items() if k in allowed_fields}
+        updates = {
+            k: (int(v) if isinstance(v, bool) else v)
+            for k, v in kwargs.items() if k in allowed_fields}
 
         if not updates:
             return
