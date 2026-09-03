@@ -15,7 +15,20 @@ from datetime import datetime
 
 router = APIRouter()
 
+# In-memory guard against concurrent scrapes for the same agent.
+# Safe because this service runs WEB_CONCURRENCY=1 (single process) --
+# if this is ever scaled to multiple workers/instances, this needs to
+# move to a shared store (e.g. Redis) instead, since each process would
+# otherwise have its own separate set.
 _scraping_in_progress: set[str] = set()
+
+# Hard caps on scrape duration. These are enforced by *this server*
+# (asyncio.wait_for), independent of Playwright's own internal timeout --
+# if the underlying Chromium process hangs at the OS level (which has
+# happened on Render's free tier), Playwright's own timeout can fail to
+# fire, so this is the real backstop that guarantees the API responds.
+SINGLE_PAGE_TIMEOUT_SECONDS = 90
+MULTI_PAGE_TIMEOUT_SECONDS = 180
 
 class ScrapeRequest(BaseModel):
     """Request body for scraping"""
@@ -85,14 +98,23 @@ async def scrape_and_store(request: Request, data: ScrapeRequest, user: User = D
         if data.multi_page:
             # Multi-page crawling
             print(f"🕷️ Starting multi-page crawl (max: {data.max_pages} pages)")
-            result = await asyncio.to_thread(
-                scrape_multiple_pages,
-                str(data.url),
-                data.max_pages,
-                data.css_selector,
-                data.xpath
-            )
-            
+            try:
+                result = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        scrape_multiple_pages,
+                        str(data.url),
+                        data.max_pages,
+                        data.css_selector,
+                        data.xpath
+                    ),
+                    timeout=MULTI_PAGE_TIMEOUT_SECONDS
+                )
+            except asyncio.TimeoutError:
+                raise HTTPException(
+                    status_code=504,
+                    detail="Scrape timed out — the site may be blocking or too slow to crawl"
+                )
+
             combined_text = "\n\n=== PAGE SEPARATOR ===\n\n".join([
                 f"[{p['title']}]\n{p['text']}" for p in result['pages']
             ])
@@ -100,7 +122,17 @@ async def scrape_and_store(request: Request, data: ScrapeRequest, user: User = D
             print(f"✅ Scraped {result['total_pages']} pages, {result['total_chars']:,} chars")
         else:
             # Single page
-            html_content = await asyncio.to_thread(scrape_website, str(data.url))
+            try:
+                html_content = await asyncio.wait_for(
+                    asyncio.to_thread(scrape_website, str(data.url)),
+                    timeout=SINGLE_PAGE_TIMEOUT_SECONDS
+                )
+            except asyncio.TimeoutError:
+                raise HTTPException(
+                    status_code=504,
+                    detail="Scrape timed out — the site may be blocking or too slow to load"
+                )
+
             combined_text = extract_text_from_html(
                 html_content,
                 css_selector=data.css_selector,
