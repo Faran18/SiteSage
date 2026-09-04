@@ -38,13 +38,23 @@ export const agentService = {
     return response.data;
   },
 
-  // Scrape URL for agent
+  // Start scraping a URL for an agent. Now returns immediately with a
+  // { job_id, status: 'queued' } -- the actual crawl runs as a background
+  // job on the server, so this call resolves fast regardless of how long
+  // the scrape itself takes. Use getScrapeStatus to poll for completion.
   scrapeUrl: async (agentId, url, options = {}) => {
     const response = await api.post('/scrape', {
       agent_id: agentId,
       url,
       ...options
     });
+    return response.data;
+  },
+
+  // Poll this with the job_id returned by scrapeUrl to find out when a
+  // background scrape job finishes (status: 'queued' | 'running' | 'done' | 'error').
+  getScrapeStatus: async (jobId) => {
+    const response = await api.get(`/scrape/status/${jobId}`);
     return response.data;
   },
 

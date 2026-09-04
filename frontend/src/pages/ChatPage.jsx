@@ -4,6 +4,9 @@ import { Send, ArrowLeft, Bot, User, Loader2, Plus, Link as LinkIcon, RotateCcw 
 import toast from 'react-hot-toast';
 import { agentService } from '../services/agentService';
 
+const SCRAPE_POLL_INTERVAL_MS = 3000;
+const SCRAPE_POLL_TIMEOUT_MS = 5 * 60 * 1000; // give up polling after 5 min
+
 export default function ChatPage() {
   const { agentId } = useParams();
   const navigate = useNavigate();
@@ -19,10 +22,16 @@ export default function ChatPage() {
   const [maxPages, setMaxPages] = useState(25);
   const messagesEndRef = useRef(null);
   const isSubmittingRef = useRef(false); // synchronous guard against double-submit
+  const pollTimeoutRef = useRef(null);   // so we can cancel polling if the component unmounts
 
   useEffect(() => {
     fetchAgent();
     fetchChatHistory();
+
+    // Cancel any in-flight polling if we navigate away mid-scrape
+    return () => {
+      if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
+    };
   }, [agentId]);
 
   useEffect(() => {
@@ -84,6 +93,52 @@ export default function ChatPage() {
     }
   };
 
+  // Polls GET /api/scrape/status/{jobId} until it's done or errors out.
+  // The scrape endpoint now returns instantly with a job_id (it runs as a
+  // background job server-side), so the UI has to ask "is it done yet?"
+  // instead of getting the result directly from the original request.
+  const pollScrapeStatus = (jobId, startedAt) => {
+    const elapsed = Date.now() - startedAt;
+
+    if (elapsed > SCRAPE_POLL_TIMEOUT_MS) {
+      toast.error('Scrape is taking unusually long — check back later', { id: 'scrape' });
+      setScraping(false);
+      isSubmittingRef.current = false;
+      return;
+    }
+
+    pollTimeoutRef.current = setTimeout(async () => {
+      try {
+        const job = await agentService.getScrapeStatus(jobId);
+
+        if (job.status === 'done') {
+          toast.success('Website scraped successfully!', { id: 'scrape' });
+          setNewUrl('');
+          setShowAddUrl(false);
+          setScraping(false);
+          isSubmittingRef.current = false;
+          fetchAgent();
+          return;
+        }
+
+        if (job.status === 'error') {
+          toast.error(job.detail || 'Failed to scrape website', { id: 'scrape' });
+          setScraping(false);
+          isSubmittingRef.current = false;
+          return;
+        }
+
+        // still "queued" or "running" — keep polling
+        pollScrapeStatus(jobId, startedAt);
+      } catch (error) {
+        toast.error('Lost track of the scrape job — check back later', { id: 'scrape' });
+        console.error(error);
+        setScraping(false);
+        isSubmittingRef.current = false;
+      }
+    }, SCRAPE_POLL_INTERVAL_MS);
+  };
+
   const handleAddUrl = async (e) => {
     e.preventDefault();
 
@@ -98,22 +153,27 @@ export default function ChatPage() {
 
     try {
       setScraping(true);
-      toast.loading('Scraping website...', { id: 'scrape' });
-      
-      await agentService.scrapeUrl(agentId, newUrl.trim(), {
+      toast.loading('Starting scrape...', { id: 'scrape' });
+
+      // This now returns immediately with a job_id -- the actual crawl
+      // runs as a background job on the server, so it can't block other
+      // requests (like login) while it's working.
+      const response = await agentService.scrapeUrl(agentId, newUrl.trim(), {
         auto_scrape: false,
         multi_page: multiPage,
         max_pages: maxPages,
       });
-      
-      toast.success('Website scraped successfully!', { id: 'scrape' });
-      setNewUrl('');
-      setShowAddUrl(false);
-      fetchAgent();
+
+      toast.loading('Scraping website...', { id: 'scrape' });
+      pollScrapeStatus(response.job_id, Date.now());
     } catch (error) {
-      toast.error('Failed to scrape website', { id: 'scrape' });
+      toast.error(
+        error?.response?.status === 409
+          ? 'A scrape is already running — please wait for it to finish'
+          : 'Failed to start scrape',
+        { id: 'scrape' }
+      );
       console.error(error);
-    } finally {
       setScraping(false);
       isSubmittingRef.current = false;
     }
